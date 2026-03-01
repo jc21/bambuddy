@@ -27,7 +27,7 @@ const COLORS = ['#00ae42', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 export function FilamentTrends({ archives, currency = '$' }: FilamentTrendsProps) {
   const { t } = useTranslation();
   const [filamentTypeMetric, setFilamentTypeMetric] = useState<Metric>('weight');
-  const [colorMetric, setColorMetric] = useState<'weight' | 'prints'>('prints');
+  const [colorMetric, setColorMetric] = useState<Metric>('weight');
 
   // Calculate daily usage data
   const dailyData = useMemo(() => {
@@ -377,70 +377,71 @@ export function FilamentTrends({ archives, currency = '$' }: FilamentTrendsProps
         <div className="bg-bambu-dark rounded-lg p-4">
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-sm font-medium text-bambu-gray">{t('stats.colorDistribution')}</h4>
-            <div className="flex gap-0.5 bg-bambu-dark-secondary rounded-lg p-0.5">
-              <button onClick={() => setColorMetric('prints')}
-                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${colorMetric === 'prints' ? 'bg-bambu-green text-white' : 'text-bambu-gray hover:text-white'}`}>
-                {t('stats.filamentByPrints')}
-              </button>
-              <button onClick={() => setColorMetric('weight')}
-                className={`px-2 py-0.5 text-xs rounded-md transition-colors ${colorMetric === 'weight' ? 'bg-bambu-green text-white' : 'text-bambu-gray hover:text-white'}`}>
-                {t('stats.filamentByWeight')}
-              </button>
-            </div>
+            <MetricToggle value={colorMetric} onChange={setColorMetric} exclude={['time']} />
           </div>
           {colorData.length > 0 ? (() => {
             const colorTotal = colorData.reduce((sum, e) => sum + e.value, 0);
             return (
-              <div className="flex items-center gap-4">
-                <ResponsiveContainer width={120} height={120}>
-                  <PieChart>
-                    <Pie
-                      data={colorData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={30}
-                      outerRadius={50}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {colorData.map((entry, index) => (
-                        <Cell key={`color-${index}`} fill={entry.hex} stroke="#1a1a1a" strokeWidth={1} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: '#2d2d2d',
-                        border: '1px solid #3d3d3d',
-                        borderRadius: '8px',
-                      }}
-                      formatter={(value) => [
-                        colorMetric === 'weight' ? formatWeight(Number(value ?? 0)) : `${value ?? 0}`,
-                        colorMetric === 'weight' ? t('stats.filamentByWeight') : t('stats.filamentByPrints'),
-                      ]}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="flex-1 space-y-1 overflow-hidden max-h-[120px] overflow-y-auto">
+              <div>
+                <div className="relative mx-auto" style={{ width: 160, height: 160 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={colorData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={70}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {colorData.map((entry, index) => (
+                          <Cell key={`color-${index}`} fill={entry.hex} stroke="#1a1a1a" strokeWidth={1} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#2d2d2d',
+                          border: '1px solid #3d3d3d',
+                          borderRadius: '8px',
+                        }}
+                        formatter={(value) => [
+                          colorMetric === 'weight' ? formatWeight(Number(value ?? 0)) : `${value ?? 0}`,
+                          colorMetric === 'weight' ? t('stats.filamentByWeight') : t('stats.filamentByPrints'),
+                        ]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-lg font-bold text-white">
+                      {colorMetric === 'weight' ? formatWeight(colorTotal) : colorTotal}
+                    </span>
+                    <span className="text-[10px] text-bambu-gray">
+                      {colorData.length} {colorData.length === 1 ? 'color' : 'colors'}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2">
                   {colorData.slice(0, 8).map((entry) => {
                     const percent = colorTotal > 0 ? ((entry.value / colorTotal) * 100).toFixed(0) : 0;
                     return (
-                      <div key={entry.hex} className="flex items-center gap-2 text-sm">
-                        <div className="w-3 h-3 rounded-full flex-shrink-0 border border-white/20"
+                      <div key={entry.hex} className="flex items-center gap-1.5 text-xs min-w-0">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-white/20"
                           style={{ backgroundColor: entry.hex }} />
-                        <span className="text-bambu-gray flex-shrink-0 text-xs">
-                          {colorMetric === 'weight' ? formatWeight(entry.value) : entry.value} · {percent}%
+                        <span className="text-bambu-gray truncate">
+                          {percent}%
                         </span>
                       </div>
                     );
                   })}
-                  {colorData.length > 8 && (
-                    <p className="text-xs text-bambu-gray">+{colorData.length - 8} more</p>
-                  )}
                 </div>
+                {colorData.length > 8 && (
+                  <p className="text-[10px] text-bambu-gray mt-1 text-center">+{colorData.length - 8} more</p>
+                )}
               </div>
             );
           })() : (
-            <div className="h-[120px] flex items-center justify-center text-bambu-gray">
+            <div className="h-[160px] flex items-center justify-center text-bambu-gray">
               {t('stats.noColorData')}
             </div>
           )}

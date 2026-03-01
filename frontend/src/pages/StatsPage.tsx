@@ -132,62 +132,29 @@ function QuickStatsWidget({
   currency: string;
 }) {
   const { t } = useTranslation();
+
+  const items = [
+    { icon: Package, color: 'text-bambu-green', label: t('stats.totalPrints'), value: `${stats?.total_prints || 0}` },
+    { icon: Clock, color: 'text-blue-400', label: t('stats.printTime'), value: `${stats?.total_print_time_hours.toFixed(1) || 0}h` },
+    { icon: Package, color: 'text-orange-400', label: t('stats.filamentUsed'), value: formatWeight(stats?.total_filament_grams || 0) },
+    { icon: DollarSign, color: 'text-green-400', label: t('stats.filamentCost'), value: `${currency} ${stats?.total_cost.toFixed(2) || '0.00'}` },
+    { icon: Zap, color: 'text-yellow-400', label: t('stats.energyUsed'), value: `${stats?.total_energy_kwh.toFixed(3) || '0.000'} kWh` },
+    { icon: DollarSign, color: 'text-yellow-500', label: t('stats.energyCost'), value: `${currency} ${stats?.total_energy_cost.toFixed(2) || '0.00'}` },
+  ];
+
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-bambu-dark text-bambu-green">
-          <Package className="w-5 h-5" />
+      {items.map((item) => (
+        <div key={item.label} className="flex items-start gap-3">
+          <div className={`p-2 rounded-lg bg-bambu-dark ${item.color}`}>
+            <item.icon className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-xs text-bambu-gray">{item.label}</p>
+            <p className="text-xl font-bold text-white">{item.value}</p>
+          </div>
         </div>
-        <div>
-          <p className="text-xs text-bambu-gray">{t('stats.totalPrints')}</p>
-          <p className="text-xl font-bold text-white">{stats?.total_prints || 0}</p>
-        </div>
-      </div>
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-bambu-dark text-blue-400">
-          <Clock className="w-5 h-5" />
-        </div>
-        <div>
-          <p className="text-xs text-bambu-gray">{t('stats.printTime')}</p>
-          <p className="text-xl font-bold text-white">{stats?.total_print_time_hours.toFixed(1) || 0}h</p>
-        </div>
-      </div>
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-bambu-dark text-orange-400">
-          <Package className="w-5 h-5" />
-        </div>
-        <div>
-          <p className="text-xs text-bambu-gray">{t('stats.filamentUsed')}</p>
-          <p className="text-xl font-bold text-white">{formatWeight(stats?.total_filament_grams || 0)}</p>
-        </div>
-      </div>
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-bambu-dark text-green-400">
-          <DollarSign className="w-5 h-5" />
-        </div>
-        <div>
-          <p className="text-xs text-bambu-gray">{t('stats.filamentCost')}</p>
-          <p className="text-xl font-bold text-white">{currency} {stats?.total_cost.toFixed(2) || '0.00'}</p>
-        </div>
-      </div>
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-bambu-dark text-yellow-400">
-          <Zap className="w-5 h-5" />
-        </div>
-        <div>
-          <p className="text-xs text-bambu-gray">{t('stats.energyUsed')}</p>
-          <p className="text-xl font-bold text-white">{stats?.total_energy_kwh.toFixed(3) || '0.000'} kWh</p>
-        </div>
-      </div>
-      <div className="flex items-start gap-3">
-        <div className="p-2 rounded-lg bg-bambu-dark text-yellow-500">
-          <DollarSign className="w-5 h-5" />
-        </div>
-        <div>
-          <p className="text-xs text-bambu-gray">{t('stats.energyCost')}</p>
-          <p className="text-xl font-bold text-white">{currency} {stats?.total_energy_cost.toFixed(2) || '0.00'}</p>
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -498,13 +465,14 @@ function PrinterStatsWidget({
     }));
   }, [archives, habitsMetric]);
 
-  const pUnit = printerMetric === 'weight' ? 'g' : printerMetric === 'time' ? 'h' : '';
+  const metricStyle = (m: Metric) => ({
+    unit: m === 'weight' ? 'g' : m === 'time' ? 'h' : '',
+    color: m === 'weight' ? '#00ae42' : m === 'time' ? '#3b82f6' : '#f59e0b',
+  });
+  const ps = metricStyle(printerMetric);
   const pLabel = printerMetric === 'weight' ? t('stats.filamentByWeight') : printerMetric === 'time' ? t('stats.hours') : t('common.prints');
-  const pColor = printerMetric === 'weight' ? '#00ae42' : printerMetric === 'time' ? '#3b82f6' : '#f59e0b';
-
-  const hUnit = habitsMetric === 'weight' ? 'g' : habitsMetric === 'time' ? 'h' : '';
+  const hs = metricStyle(habitsMetric);
   const hLabel = habitsMetric === 'weight' ? t('stats.avgWeight') : habitsMetric === 'time' ? t('stats.avgTime') : t('stats.avgPrints');
-  const hColor = habitsMetric === 'weight' ? '#00ae42' : habitsMetric === 'time' ? '#3b82f6' : '#f59e0b';
 
   return (
     <div className="space-y-4">
@@ -518,16 +486,16 @@ function PrinterStatsWidget({
           <ResponsiveContainer width="100%" height={Math.max(140, printerData.length * 40)}>
             <BarChart data={printerData} layout="vertical" margin={{ left: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#3d3d3d" />
-              <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 11 }} unit={pUnit} />
+              <XAxis type="number" stroke="#9ca3af" tick={{ fontSize: 11 }} unit={ps.unit} />
               <YAxis type="category" dataKey="name" stroke="#9ca3af" tick={{ fontSize: 11 }} width={100} />
               <Tooltip
                 contentStyle={RECHARTS_TOOLTIP_STYLE}
                 formatter={(v: number | undefined) => [
-                  printerMetric === 'weight' ? formatWeight(Number(v ?? 0)) : `${v ?? 0}${pUnit}`,
+                  printerMetric === 'weight' ? formatWeight(Number(v ?? 0)) : `${v ?? 0}${ps.unit}`,
                   pLabel,
                 ]}
               />
-              <Bar dataKey="value" fill={pColor} radius={[0, 4, 4, 0]} />
+              <Bar dataKey="value" fill={ps.color} radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
@@ -565,9 +533,9 @@ function PrinterStatsWidget({
               <BarChart data={habitsData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#3d3d3d" />
                 <XAxis dataKey="name" stroke="#9ca3af" tick={{ fontSize: 11 }} />
-                <YAxis stroke="#9ca3af" tick={{ fontSize: 11 }} unit={hUnit} />
-                <Tooltip contentStyle={RECHARTS_TOOLTIP_STYLE} formatter={(v: number | undefined) => [`${v ?? 0}${hUnit}`, hLabel]} />
-                <Bar dataKey="avg" fill={hColor} radius={[4, 4, 0, 0]} />
+                <YAxis stroke="#9ca3af" tick={{ fontSize: 11 }} unit={hs.unit} />
+                <Tooltip contentStyle={RECHARTS_TOOLTIP_STYLE} formatter={(v: number | undefined) => [`${v ?? 0}${hs.unit}`, hLabel]} />
+                <Bar dataKey="avg" fill={hs.color} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -715,60 +683,41 @@ function RecordsWidget({ archives, currency }: { archives: Archive[]; currency: 
 
     if (archives.length === 0) return result;
 
-    // Longest print
-    let longestArchive: Archive | null = null;
-    let longestTime = 0;
-    archives.forEach(a => {
-      if (a.actual_time_seconds && a.actual_time_seconds > longestTime) {
-        longestTime = a.actual_time_seconds;
-        longestArchive = a;
-      }
-    });
-    if (longestArchive && longestTime > 0) {
+    // Find the archive with the highest value for a given field
+    const findMax = (getter: (a: Archive) => number | null | undefined): { archive: Archive | null; value: number } => {
+      let best: Archive | null = null;
+      let bestVal = 0;
+      archives.forEach(a => {
+        const v = getter(a);
+        if (v && v > bestVal) { bestVal = v; best = a; }
+      });
+      return { archive: best, value: bestVal };
+    };
+
+    const longest = findMax(a => a.actual_time_seconds);
+    if (longest.archive) {
       result.push({
-        icon: Clock,
-        iconColor: 'text-blue-400',
-        label: t('stats.longestPrint'),
-        value: formatDuration(longestTime),
-        detail: (longestArchive as Archive).print_name || null,
+        icon: Clock, iconColor: 'text-blue-400', label: t('stats.longestPrint'),
+        value: formatDuration(longest.value),
+        detail: longest.archive.print_name || null,
       });
     }
 
-    // Heaviest print
-    let heaviestArchive: Archive | null = null;
-    let heaviestWeight = 0;
-    archives.forEach(a => {
-      if (a.filament_used_grams && a.filament_used_grams > heaviestWeight) {
-        heaviestWeight = a.filament_used_grams;
-        heaviestArchive = a;
-      }
-    });
-    if (heaviestArchive && heaviestWeight > 0) {
+    const heaviest = findMax(a => a.filament_used_grams);
+    if (heaviest.archive) {
       result.push({
-        icon: Package,
-        iconColor: 'text-orange-400',
-        label: t('stats.heaviestPrint'),
-        value: formatWeight(heaviestWeight),
-        detail: (heaviestArchive as Archive).print_name || null,
+        icon: Package, iconColor: 'text-orange-400', label: t('stats.heaviestPrint'),
+        value: formatWeight(heaviest.value),
+        detail: heaviest.archive.print_name || null,
       });
     }
 
-    // Most expensive print
-    let costliestArchive: Archive | null = null;
-    let highestCost = 0;
-    archives.forEach(a => {
-      if (a.cost && a.cost > highestCost) {
-        highestCost = a.cost;
-        costliestArchive = a;
-      }
-    });
-    if (costliestArchive && highestCost > 0) {
+    const costliest = findMax(a => a.cost);
+    if (costliest.archive) {
       result.push({
-        icon: DollarSign,
-        iconColor: 'text-green-400',
-        label: t('stats.mostExpensivePrint'),
-        value: `${currency}${highestCost.toFixed(2)}`,
-        detail: (costliestArchive as Archive).print_name || null,
+        icon: DollarSign, iconColor: 'text-green-400', label: t('stats.mostExpensivePrint'),
+        value: `${currency}${costliest.value.toFixed(2)}`,
+        detail: costliest.archive.print_name || null,
       });
     }
 

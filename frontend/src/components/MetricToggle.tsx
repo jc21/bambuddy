@@ -7,9 +7,10 @@ const METRICS: Metric[] = ['weight', 'prints', 'time'];
 interface MetricToggleProps {
   value: Metric;
   onChange: (metric: Metric) => void;
+  exclude?: Metric[];
 }
 
-export function MetricToggle({ value, onChange }: MetricToggleProps) {
+export function MetricToggle({ value, onChange, exclude }: MetricToggleProps) {
   const { t } = useTranslation();
 
   const labels: Record<Metric, string> = {
@@ -18,9 +19,11 @@ export function MetricToggle({ value, onChange }: MetricToggleProps) {
     time: t('stats.filamentByTime'),
   };
 
+  const metrics = exclude ? METRICS.filter(m => !exclude.includes(m)) : METRICS;
+
   return (
     <div className="flex gap-0.5 bg-bambu-dark rounded-lg p-0.5">
-      {METRICS.map(m => (
+      {metrics.map(m => (
         <button
           key={m}
           onClick={() => onChange(m)}
