@@ -1354,6 +1354,12 @@ async def run_migrations(conn):
     except OperationalError:
         pass  # Already applied
 
+    # Migration: Add NFC tag write payload column to spoolbuddy_devices
+    try:
+        await conn.execute(text("ALTER TABLE spoolbuddy_devices ADD COLUMN pending_write_payload TEXT"))
+    except OperationalError:
+        pass  # Already applied
+
 
 async def seed_notification_templates():
     """Seed default notification templates if they don't exist."""

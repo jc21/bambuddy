@@ -168,3 +168,17 @@ class APIClient:
                 "raw_adc": raw_adc,
             },
         )
+
+    async def write_tag_result(
+        self, device_id: str, spool_id: int, tag_uid: str, success: bool, message: str | None = None
+    ) -> dict | None:
+        return await self._post(
+            "/nfc/write-result",
+            {
+                "device_id": device_id,
+                "spool_id": spool_id,
+                "tag_uid": tag_uid,
+                "success": success,
+                "message": message,
+            },
+        )

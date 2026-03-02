@@ -15,7 +15,7 @@ from . import __version__
 from .api_client import APIClient
 from .config import Config
 from .display_control import DisplayControl
-from .nfc_reader import NFCReader
+from .nfc_reader import NFCReader, NFCState
 from .scale_reader import ScaleReader
 
 logging.basicConfig(
@@ -63,6 +63,20 @@ async def nfc_poll_loop(config: Config, api: APIClient, shared: dict):
                     device_id=config.device_id,
                     tag_uid=event_data["tag_uid"],
                 )
+
+            # Check for pending write command
+            pending = shared.get("pending_write")
+            if pending and nfc.state == NFCState.TAG_PRESENT and nfc.current_sak == 0x00:
+                logger.info("Executing pending tag write for spool %d", pending["spool_id"])
+                success, msg = await asyncio.to_thread(nfc.write_ntag, pending["ndef_data"])
+                await api.write_tag_result(
+                    device_id=config.device_id,
+                    spool_id=pending["spool_id"],
+                    tag_uid=nfc.current_uid or "",
+                    success=success,
+                    message=msg,
+                )
+                shared.pop("pending_write", None)
 
             await asyncio.sleep(config.nfc_poll_interval)
     finally:
@@ -143,6 +157,14 @@ async def heartbeat_loop(config: Config, api: APIClient, start_time: float, shar
                     logger.warning("Tare command received but scale not available")
                 # Skip calibration sync — this heartbeat response predates the tare
                 continue
+            elif cmd == "write_tag":
+                write_payload = result.get("pending_write_payload")
+                if write_payload:
+                    shared["pending_write"] = {
+                        "spool_id": write_payload["spool_id"],
+                        "ndef_data": bytes.fromhex(write_payload["ndef_data_hex"]),
+                    }
+                    logger.info("Write tag command received for spool %d", write_payload["spool_id"])
 
             tare = result.get("tare_offset", config.tare_offset)
             cal = result.get("calibration_factor", config.calibration_factor)

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.core.database import Base
@@ -28,6 +28,7 @@ class SpoolBuddyDevice(Base):
     last_calibrated_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime)
     pending_command: Mapped[str | None] = mapped_column(String(50))
+    pending_write_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     nfc_ok: Mapped[bool] = mapped_column(Boolean, default=False)
     scale_ok: Mapped[bool] = mapped_column(Boolean, default=False)
     uptime_s: Mapped[int] = mapped_column(Integer, default=0)

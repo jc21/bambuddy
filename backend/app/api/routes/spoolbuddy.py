@@ -26,6 +26,8 @@ from backend.app.schemas.spoolbuddy import (
     TagRemovedRequest,
     TagScannedRequest,
     UpdateSpoolWeightRequest,
+    WriteTagRequest,
+    WriteTagResultRequest,
 )
 from backend.app.services.spool_tag_matcher import get_spool_by_tag
 
@@ -171,7 +173,18 @@ async def device_heartbeat(
 
     # Return and clear pending command
     pending = device.pending_command
-    device.pending_command = None
+    pending_write = None
+    if pending == "write_tag" and device.pending_write_payload:
+        # Parse the stored JSON payload to include in response
+        import json
+
+        try:
+            pending_write = json.loads(device.pending_write_payload)
+        except (json.JSONDecodeError, TypeError):
+            pending_write = None
+        # Don't clear write_tag command — it gets cleared by write-result
+    else:
+        device.pending_command = None
 
     await db.commit()
 
@@ -186,6 +199,7 @@ async def device_heartbeat(
 
     return HeartbeatResponse(
         pending_command=pending,
+        pending_write_payload=pending_write,
         tare_offset=device.tare_offset,
         calibration_factor=device.calibration_factor,
         display_brightness=device.display_brightness,
@@ -253,6 +267,121 @@ async def nfc_tag_removed(
             "tag_uid": req.tag_uid,
         }
     )
+    return {"status": "ok"}
+
+
+@router.post("/nfc/write-tag")
+async def nfc_write_tag(
+    req: WriteTagRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+):
+    """Queue an NFC tag write command for a SpoolBuddy device."""
+    import json
+
+    from backend.app.models.spool import Spool
+    from backend.app.services.opentag3d import encode_opentag3d
+
+    # Find the spool
+    result = await db.execute(select(Spool).where(Spool.id == req.spool_id))
+    spool = result.scalar_one_or_none()
+    if not spool:
+        raise HTTPException(status_code=404, detail="Spool not found")
+
+    # Find the device
+    result = await db.execute(select(SpoolBuddyDevice).where(SpoolBuddyDevice.device_id == req.device_id))
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not registered")
+
+    # Encode OpenTag3D NDEF data
+    ndef_data = encode_opentag3d(spool)
+
+    # Store write payload and set pending command
+    device.pending_write_payload = json.dumps(
+        {
+            "spool_id": spool.id,
+            "ndef_data_hex": ndef_data.hex(),
+        }
+    )
+    device.pending_command = "write_tag"
+    await db.commit()
+
+    logger.info("Write tag queued for device %s, spool %d (%d bytes)", req.device_id, spool.id, len(ndef_data))
+    return {"status": "queued"}
+
+
+@router.post("/nfc/write-result")
+async def nfc_write_result(
+    req: WriteTagResultRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+):
+    """Handle NFC tag write result from SpoolBuddy daemon."""
+    # Find the device and clear pending state
+    result = await db.execute(select(SpoolBuddyDevice).where(SpoolBuddyDevice.device_id == req.device_id))
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not registered")
+
+    device.pending_command = None
+    device.pending_write_payload = None
+
+    if req.success:
+        # Link the tag to the spool
+        from backend.app.models.spool import Spool
+
+        result = await db.execute(select(Spool).where(Spool.id == req.spool_id))
+        spool = result.scalar_one_or_none()
+        if spool:
+            spool.tag_uid = req.tag_uid.upper()
+            spool.tag_type = "ntag"
+            spool.data_origin = "opentag3d"
+            spool.encode_time = datetime.now(timezone.utc)
+            logger.info("Tag written and linked: spool %d -> tag %s", spool.id, req.tag_uid)
+
+        await db.commit()
+        await ws_manager.broadcast(
+            {
+                "type": "spoolbuddy_tag_written",
+                "device_id": req.device_id,
+                "spool_id": req.spool_id,
+                "tag_uid": req.tag_uid,
+            }
+        )
+    else:
+        await db.commit()
+        await ws_manager.broadcast(
+            {
+                "type": "spoolbuddy_tag_write_failed",
+                "device_id": req.device_id,
+                "spool_id": req.spool_id,
+                "message": req.message,
+            }
+        )
+        logger.warning("Tag write failed for device %s: %s", req.device_id, req.message)
+
+    return {"status": "ok"}
+
+
+@router.post("/devices/{device_id}/cancel-write")
+async def cancel_write(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
+):
+    """Cancel a pending write-tag command."""
+    result = await db.execute(select(SpoolBuddyDevice).where(SpoolBuddyDevice.device_id == device_id))
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not registered")
+
+    if device.pending_command == "write_tag":
+        device.pending_command = None
+        device.pending_write_payload = None
+        await db.commit()
+        logger.info("Write tag cancelled for device %s", device_id)
+
     return {"status": "ok"}
 
 

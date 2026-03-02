@@ -60,6 +60,7 @@ class HeartbeatRequest(BaseModel):
 
 class HeartbeatResponse(BaseModel):
     pending_command: str | None = None
+    pending_write_payload: dict | None = None
     tare_offset: int
     calibration_factor: float
     display_brightness: int = 100
@@ -121,6 +122,19 @@ class CalibrationResponse(BaseModel):
 
 
 # --- Display schemas ---
+
+
+class WriteTagRequest(BaseModel):
+    device_id: str
+    spool_id: int
+
+
+class WriteTagResultRequest(BaseModel):
+    device_id: str
+    spool_id: int
+    tag_uid: str
+    success: bool
+    message: str | None = None
 
 
 class DisplaySettingsRequest(BaseModel):

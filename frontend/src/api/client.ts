@@ -4920,4 +4920,16 @@ export const spoolbuddyApi = {
 
   checkDaemonUpdate: (deviceId: string, includeBeta?: boolean) =>
     request<DaemonUpdateCheck>(`/spoolbuddy/devices/${deviceId}/update-check?include_beta=${includeBeta ?? false}`),
+
+  writeTag: (deviceId: string, spoolId: number) =>
+    request<{ status: string }>('/spoolbuddy/nfc/write-tag', {
+      method: 'POST',
+      body: JSON.stringify({ device_id: deviceId, spool_id: spoolId }),
+    }),
+
+  cancelWrite: (deviceId: string) =>
+    request<{ status: string }>(`/spoolbuddy/devices/${deviceId}/cancel-write`, {
+      method: 'POST',
+      body: '{}',
+    }),
 };
