@@ -53,6 +53,7 @@ All notable changes to Bambuddy will be documented in this file.
 - **Updates Card Separates Firmware and Software Settings** — The Updates card on the Settings page mixed printer firmware and Bambuddy software update toggles with no visual grouping. Now splits the card into two labeled sections ("Printer Firmware" and "Bambuddy Software") separated by a divider, making it clear which toggles control what.
 - **SpoolBuddy Test Coverage** — Added integration tests for all 12 SpoolBuddy API endpoints (21 backend tests covering device registration/re-registration, heartbeat status and pending commands, NFC tag scan/match/removal, scale reading broadcast, spool weight calculation, and scale calibration including tare, set-factor, and zero-delta error handling) and component tests for the three main SpoolBuddy frontend components (20 frontend tests covering WeightDisplay weight formatting and status indicators, SpoolInfoCard spool info rendering and action callbacks, UnknownTagCard tag display, and TagDetectedModal open/close/escape behavior with known and unknown spool views).
 - **Cleanup Obsolete Settings** — The startup migration now deletes orphaned settings keys from the database that are no longer used by the application (e.g., `slicer_binary_path` from earlier slicer integration research).
+- **Added HUF Currency** ([#579](https://github.com/maziggy/bambuddy/issues/579)) — Added Hungarian Forint (HUF, Ft) to the supported currencies list for filament cost tracking.
 
 ## [0.2.1] - 2026-02-27
 
