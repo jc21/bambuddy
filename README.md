@@ -90,6 +90,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Skip objects during print
 - AMS slot RFID re-read
 - AMS slot configuration (model-filtered presets, K profiles, color picker, pre-population for configured slots)
+- AMS info card (hover for serial number, firmware version) with custom friendly names that persist across printers
 - Dual external spool support for H2D (Ext-L / Ext-R)
 - HMS error monitoring with history and clear errors
 - Print success rates & trends

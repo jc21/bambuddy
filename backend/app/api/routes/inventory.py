@@ -665,7 +665,7 @@ async def list_assignments(
                         serial_map[(pid, int(ams_unit.get("id", 0)))] = sn
                     except (ValueError, TypeError):
                         continue
-              
+
     # Fetch all relevant AMS labels keyed by serial number
     all_serials = set(serial_map.values())
     # Also include synthetic fallback keys for assignments without a known serial
@@ -678,9 +678,7 @@ async def list_assignments(
 
     label_by_serial: dict[str, str] = {}
     if all_serials:
-        lbl_result = await db.execute(
-            select(AmsLabel).where(AmsLabel.ams_serial_number.in_(all_serials))
-        )
+        lbl_result = await db.execute(select(AmsLabel).where(AmsLabel.ams_serial_number.in_(all_serials)))
         for lbl in lbl_result.scalars().all():
             label_by_serial[lbl.ams_serial_number] = lbl.label
 
