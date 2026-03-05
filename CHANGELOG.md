@@ -7,6 +7,9 @@ All notable changes to Bambuddy will be documented in this file.
 ### New Features
 - **AMS Info Card & Custom Labels** ([#570](https://github.com/maziggy/bambuddy/pull/570)) — Hovering an AMS label (e.g. "AMS-A") on the Printers page now shows a popover with serial number, firmware version, and an editable friendly name. Custom labels are stored by AMS serial number so they persist when the unit is moved to a different printer. Slot numbers are now displayed inside each filament color circle with auto-inverted contrast for readability. Labels also appear in the Inventory page's location column. Contributed by @cadtoolbox.
 
+### Improved
+- **Print Queue Scheduler Diagnostics** ([#616](https://github.com/maziggy/bambuddy/issues/616)) — Added diagnostic logging to the print queue scheduler to help diagnose why queued prints aren't starting. After each queue check, the scheduler now logs a skip summary (how many items were skipped due to manual_start, scheduled_time, etc.) and for each busy printer, logs the exact state preventing it from being considered idle (connected status, printer state, plate_cleared flag). Previously the scheduler only logged "found N pending items" with no visibility into why items were skipped.
+
 ### Fixed
 - **Windows: Server Shuts Down After 60 Seconds** ([#605](https://github.com/maziggy/bambuddy/issues/605)) — On Windows, terminating orphaned ffmpeg camera processes broadcast `CTRL_C_EVENT` to the entire process group, causing uvicorn to interpret it as a user-initiated shutdown. ffmpeg is now spawned in its own process group (`CREATE_NEW_PROCESS_GROUP`) so cleanup no longer affects the server. Reported by @Reactantvr.
 
