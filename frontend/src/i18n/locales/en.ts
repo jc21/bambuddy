@@ -1618,6 +1618,11 @@ export default {
       exportTooltip: 'Export catalog to JSON',
       importTooltip: 'Import catalog from JSON',
       resetTooltip: 'Reset to defaults',
+      selectedCount: '{{count}} selected',
+      deleteSelected: 'Delete Selected',
+      bulkDeleteConfirm: 'Are you sure you want to delete {{count}} entries?',
+      bulkDeleted: 'Deleted {{count}} entries',
+      bulkDeleteFailed: 'Failed to delete entries',
     },
     colorCatalog: {
       title: 'Color Catalog',
@@ -1656,6 +1661,11 @@ export default {
       exported: 'Exported {{count}} colors',
       imported: 'Imported {{added}} colors ({{skipped}} skipped)',
       importFailed: 'Failed to import: invalid JSON format',
+      selectedCount: '{{count}} selected',
+      deleteSelected: 'Delete Selected',
+      bulkDeleteConfirm: 'Are you sure you want to delete {{count}} colors?',
+      bulkDeleted: 'Deleted {{count}} colors',
+      bulkDeleteFailed: 'Failed to delete colors',
     },
     // General tab
     dateFormat: 'Date Format',

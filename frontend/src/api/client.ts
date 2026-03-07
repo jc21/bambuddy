@@ -3591,6 +3591,8 @@ export const api = {
     request<SpoolCatalogEntry>(`/inventory/catalog/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteCatalogEntry: (id: number) =>
     request<{ status: string }>(`/inventory/catalog/${id}`, { method: 'DELETE' }),
+  bulkDeleteCatalogEntries: (ids: number[]) =>
+    request<{ deleted: number }>('/inventory/catalog/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
   resetSpoolCatalog: () =>
     request<{ status: string }>('/inventory/catalog/reset', { method: 'POST' }),
   getColorCatalog: () =>
@@ -3601,6 +3603,8 @@ export const api = {
     request<ColorCatalogEntry>(`/inventory/colors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteColorEntry: (id: number) =>
     request<{ status: string }>(`/inventory/colors/${id}`, { method: 'DELETE' }),
+  bulkDeleteColorEntries: (ids: number[]) =>
+    request<{ deleted: number }>('/inventory/colors/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
   resetColorCatalog: () =>
     request<{ status: string }>('/inventory/colors/reset', { method: 'POST' }),
   lookupColor: (manufacturer: string, colorName: string, material?: string) =>

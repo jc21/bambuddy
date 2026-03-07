@@ -1618,6 +1618,11 @@ export default {
       exportTooltip: 'カタログをJSONにエクスポート',
       importTooltip: 'JSONからカタログをインポート',
       resetTooltip: 'デフォルトにリセット',
+      selectedCount: '{{count}}件選択中',
+      deleteSelected: '選択を削除',
+      bulkDeleteConfirm: '{{count}}件のエントリーを削除してもよろしいですか？',
+      bulkDeleted: '{{count}}件のエントリーを削除しました',
+      bulkDeleteFailed: 'エントリーの削除に失敗しました',
     },
     colorCatalog: {
       title: 'カラーカタログ',
@@ -1656,6 +1661,11 @@ export default {
       exported: '{{count}}件のカラーをエクスポートしました',
       imported: '{{added}}件のカラーをインポートしました（{{skipped}}件スキップ）',
       importFailed: 'インポートに失敗しました：無効なJSON形式',
+      selectedCount: '{{count}}件選択中',
+      deleteSelected: '選択を削除',
+      bulkDeleteConfirm: '{{count}}件のカラーを削除してもよろしいですか？',
+      bulkDeleted: '{{count}}件のカラーを削除しました',
+      bulkDeleteFailed: 'カラーの削除に失敗しました',
     },
     // General tab
     dateFormat: '日付形式',
