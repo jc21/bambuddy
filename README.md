@@ -625,6 +625,7 @@ AGPL-3.0 License — see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
+- [SpoolEase](https://github.com/yanshay/SpoolEase) by yanshay — early inspiration for NFC-based spool tracking and AMS inventory concepts
 - [Bambu Lab](https://bambulab.com/) for amazing printers
 - The reverse engineering community for protocol documentation
 - All testers and contributors
