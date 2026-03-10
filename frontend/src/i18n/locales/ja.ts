@@ -3051,6 +3051,7 @@ export default {
     githubBackup: 'GitHubバックアップ',
     enabled: '有効',
     cloudLoginRequired: 'Bambu Cloudログインが必要です。GitHubバックアップを有効にするには、プロファイル → クラウドプロファイルからサインインしてください。',
+    cloudLoginRequiredShort: 'Cloudログインが必要',
     githubDescription: 'プロファイルをプライベートGitHubリポジトリに自動的に同期し、バックアップとバージョン履歴を保持します。',
     repositoryUrl: 'リポジトリURL',
     personalAccessToken: '個人アクセストークン',

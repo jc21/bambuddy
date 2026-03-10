@@ -3038,6 +3038,7 @@ export default {
     githubBackup: 'Sauvegarde GitHub',
     enabled: 'Activé',
     cloudLoginRequired: 'Connexion Bambu Cloud requise. Connectez-vous sous Profils → Profils Cloud pour activer la sauvegarde GitHub.',
+    cloudLoginRequiredShort: 'Connexion Cloud requise',
     githubDescription: 'Synchronisez automatiquement vos profils vers un dépôt GitHub privé pour la sauvegarde et l\'historique des versions.',
     repositoryUrl: 'URL du dépôt',
     personalAccessToken: 'Jeton d\'accès personnel',

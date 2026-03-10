@@ -6,20 +6,13 @@ All notable changes to Bambuddy will be documented in this file.
 
 ### New Features
 - **Virtual Printer Queue Auto-Dispatch Toggle** ([#587](https://github.com/maziggy/bambuddy/issues/587)) — Added an "Auto-dispatch" toggle to virtual printers in Queue mode. When enabled (default), prints sent from the slicer are added to the queue and start automatically on the assigned printer — matching the current behavior. When disabled, prints are added to the queue with `manual_start` set, so they wait for manual dispatch. This allows users who want to review and manually assign prints before they start. Requested by @Percy2Live.
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 7934262 (  Add queue-all-plates and fix clear plate prompt for staged items (#530))
 - **Queue All Plates** ([#530](https://github.com/maziggy/bambuddy/issues/530)) — Multi-plate 3MF files can now be queued in one action. When adding a multi-plate file to the queue, a "Queue All N Plates" toggle appears in the plate selector. When activated, every plate is added as a separate queue entry (one per plate × per selected printer), each individually editable from the queue page. The toggle is only available in add-to-queue mode (not reprint or edit). Requested by @Dendrowen.
 
 ### Fixed
 - **Clear Plate Prompt Shown for Staged Queue Items** — The "Clear Plate & Start Next" button on the printer card appeared when all pending queue items were staged (`manual_start`/Queue Only), even though the scheduler won't auto-start them. The clear plate prompt now only appears when there are auto-dispatchable items that the scheduler will actually start after the plate is cleared.
-<<<<<<< HEAD
 - **Ethernet Badge Always Shown on Printer Cards** — The printer card network badge always showed "Ethernet" instead of the WiFi signal indicator, even on printers without an ethernet port. The `home_flag` bit 18 was incorrectly interpreted as indicating a wired connection. Removed the faulty ethernet detection; the WiFi signal badge now displays correctly when the printer reports signal strength.
-=======
->>>>>>> 319aeae (  Add auto-dispatch toggle for virtual printer queue mode (#587))
-=======
->>>>>>> 7934262 (  Add queue-all-plates and fix clear plate prompt for staged items (#530))
+- **GitHub Backup Required Cloud Login** ([#655](https://github.com/maziggy/bambuddy/issues/655)) — The GitHub backup settings card was completely blocked behind Bambu Cloud authentication, showing "Bambu Cloud login required" even though the backup feature works without it (K-profiles and app settings don't need cloud). Removed the cloud auth gate so GitHub backup can be configured and used without Bambu Cloud. The "Cloud Profiles" checkbox is disabled with a hint when not logged in. Reported by @TravisWilder.
+- **GitHub Backup Log Timestamps Off by 1 Hour** — Backup log timestamps in the history table were displayed in UTC instead of the user's local timezone. The local `formatDateTime` function didn't use `parseUTCDate`, so timezone-less timestamps from SQLite were interpreted as local time. Now uses the shared `parseUTCDate` utility for correct UTC-to-local conversion.
 
 ## [0.2.2b3] - Unreleased
 

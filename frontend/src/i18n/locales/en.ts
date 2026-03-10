@@ -3051,6 +3051,7 @@ export default {
     githubBackup: 'GitHub Backup',
     enabled: 'Enabled',
     cloudLoginRequired: 'Bambu Cloud login required. Sign in under Profiles → Cloud Profiles to enable GitHub backup.',
+    cloudLoginRequiredShort: 'Cloud login required',
     githubDescription: 'Automatically sync your profiles to a private GitHub repository for backup and version history.',
     repositoryUrl: 'Repository URL',
     personalAccessToken: 'Personal Access Token',

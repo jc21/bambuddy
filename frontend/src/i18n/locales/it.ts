@@ -3037,6 +3037,7 @@ export default {
     githubBackup: 'Backup GitHub',
     enabled: 'Abilitato',
     cloudLoginRequired: 'Accesso Bambu Cloud richiesto. Accedi in Profili → Profili Cloud per abilitare il backup GitHub.',
+    cloudLoginRequiredShort: 'Accesso Cloud richiesto',
     githubDescription: 'Sincronizza automaticamente i tuoi profili con un repository GitHub privato per backup e cronologia delle versioni.',
     repositoryUrl: 'URL del repository',
     personalAccessToken: 'Token di accesso personale',
