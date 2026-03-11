@@ -556,6 +556,12 @@ class BambuMQTTClient:
                 except ValueError:
                     pass  # Ignore unparseable wifi_signal strings; field is non-critical
 
+            # Detect ethernet: wifi_signal == -90 is a sentinel for "WiFi disabled/ethernet"
+            from backend.app.utils.printer_models import has_ethernet
+
+            if has_ethernet(self.model):
+                self.state.wired_network = self.state.wifi_signal == -90
+
         # Parse developer LAN mode from top-level "fun" field
         # Some firmware versions send "fun" at the top level, others inside "print"
         if "fun" in payload and self.state.developer_mode is None:
@@ -2077,12 +2083,6 @@ class BambuMQTTClient:
                     f"[{self.serial_number}] store_to_sdcard changed: {self.state.store_to_sdcard} -> {store_to_sdcard}"
                 )
             self.state.store_to_sdcard = store_to_sdcard
-            # Bit 18 (0x00040000) indicates wired/ethernet connection
-            # Only trust this on models that actually have an ethernet port
-            from app.utils.printer_models import has_ethernet
-
-            if has_ethernet(self.model):
-                self.state.wired_network = bool((home_flag >> 18) & 1)
 
         # Parse timelapse status (recording active during print)
         if "timelapse" in data:
@@ -2126,6 +2126,14 @@ class BambuMQTTClient:
                     self.state.wifi_signal = int(wifi_signal.replace("dBm", "").strip())
                 except ValueError:
                     pass  # Ignore unparseable wifi_signal strings; field is non-critical
+
+            # Detect ethernet connection: printers on ethernet with WiFi disabled
+            # report a hardcoded wifi_signal of -90 dBm. Real WiFi signals vary
+            # (typically -30 to -80 dBm). Only check models with an ethernet port.
+            from backend.app.utils.printer_models import has_ethernet
+
+            if has_ethernet(self.model):
+                self.state.wired_network = self.state.wifi_signal == -90
 
         # Parse print speed level (1=silent, 2=standard, 3=sport, 4=ludicrous)
         if "spd_lvl" in data:
