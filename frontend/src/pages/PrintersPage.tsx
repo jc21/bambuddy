@@ -1924,9 +1924,9 @@ function PrinterCard({
     },
   });
 
-  // Run script mutation
+  // Run HA entity mutation — scripts use 'on' (trigger), switches use 'toggle'
   const runScriptMutation = useMutation({
-    mutationFn: (scriptId: number) => api.controlSmartPlug(scriptId, 'on'),
+    mutationFn: ({ id, action }: { id: number; action: 'on' | 'toggle' }) => api.controlSmartPlug(id, action),
     onSuccess: () => {
       showToast(t('printers.toast.scriptTriggered'));
     },
@@ -3977,18 +3977,21 @@ function PrinterCard({
                 <Home className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
                 <span className="text-xs text-bambu-gray">HA:</span>
                 <div className="flex flex-wrap gap-1">
-                  {scriptPlugs.map(script => (
-                    <button
-                      key={script.id}
-                      onClick={() => runScriptMutation.mutate(script.id)}
-                      disabled={runScriptMutation.isPending}
-                      title={`Run ${script.ha_entity_id}`}
-                      className="px-2 py-0.5 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded transition-colors flex items-center gap-1"
-                    >
-                      <Play className="w-2.5 h-2.5" />
-                      {script.name}
-                    </button>
-                  ))}
+                  {scriptPlugs.map(script => {
+                    const isScript = script.ha_entity_id?.startsWith('script.');
+                    return (
+                      <button
+                        key={script.id}
+                        onClick={() => runScriptMutation.mutate({ id: script.id, action: isScript ? 'on' : 'toggle' })}
+                        disabled={runScriptMutation.isPending}
+                        title={`${isScript ? 'Run' : 'Toggle'} ${script.ha_entity_id}`}
+                        className="px-2 py-0.5 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded transition-colors flex items-center gap-1"
+                      >
+                        <Play className="w-2.5 h-2.5" />
+                        {script.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
