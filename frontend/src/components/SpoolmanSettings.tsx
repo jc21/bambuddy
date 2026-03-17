@@ -528,7 +528,7 @@ export function SpoolmanSettings() {
                           <li key={i} className="flex items-center gap-2">
                             {s.color && (
                               <span
-                                className="w-3 h-3 rounded-full border border-white/20"
+                                className="w-3 h-3 rounded-full border border-black/20"
                                 style={{ backgroundColor: `#${s.color}` }}
                               />
                             )}

@@ -222,7 +222,7 @@ export function AssignSpoolModal({ isOpen, onClose, printerId, amsId, trayId, tr
               <div className="flex items-center gap-2">
                 {trayInfo.color && (
                   <span
-                    className="w-4 h-4 rounded-full border border-white/20"
+                    className="w-4 h-4 rounded-full border border-black/20"
                     style={{ backgroundColor: `#${trayInfo.color}` }}
                   />
                 )}
@@ -268,7 +268,7 @@ export function AssignSpoolModal({ isOpen, onClose, printerId, amsId, trayId, tr
                     <div className="flex items-center gap-1.5 mt-1">
                       {spool.rgba && (
                         <span
-                          className="w-3 h-3 rounded-full border border-white/20 flex-shrink-0"
+                          className="w-3 h-3 rounded-full border border-black/20 flex-shrink-0"
                           style={{ backgroundColor: `#${spool.rgba.substring(0, 6)}` }}
                         />
                       )}

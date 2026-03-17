@@ -123,7 +123,7 @@ export function LinkSpoolModal({ isOpen, onClose, tagUid, trayUuid, printerId, a
                 className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition-colors text-left"
               >
                 <span
-                  className="w-6 h-6 rounded-full border border-white/20 flex-shrink-0"
+                  className="w-6 h-6 rounded-full border border-black/20 flex-shrink-0"
                   style={{ backgroundColor: spool.filament_color_hex ? `#${spool.filament_color_hex}` : '#808080' }}
                 />
                 <div className="flex-1 min-w-0">

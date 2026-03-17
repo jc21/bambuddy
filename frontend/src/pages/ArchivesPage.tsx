@@ -1006,7 +1006,7 @@ function ArchiveCard({
                   {archive.filament_color.split(',').map((color, i) => (
                     <div
                       key={i}
-                      className="w-3 h-3 rounded-full border border-white/20"
+                      className="w-3 h-3 rounded-full border border-black/20"
                       style={{ backgroundColor: color }}
                       title={color}
                     />
@@ -1962,7 +1962,7 @@ function ArchiveListRow({
                   {archive.filament_color.split(',').map((color, i) => (
                     <div
                       key={i}
-                      className="w-2.5 h-2.5 rounded-full border border-white/20"
+                      className="w-2.5 h-2.5 rounded-full border border-black/20"
                       style={{ backgroundColor: color }}
                       title={color}
                     />
@@ -3508,7 +3508,7 @@ export function ArchivesPage() {
                             <div className="flex items-center gap-1.5">
                               {entry.filament_color && (
                                 <span
-                                  className="w-3 h-3 rounded-full border border-white/20 flex-shrink-0"
+                                  className="w-3 h-3 rounded-full border border-black/20 flex-shrink-0"
                                   style={{ backgroundColor: entry.filament_color.startsWith('#') ? entry.filament_color : undefined }}
                                 />
                               )}
