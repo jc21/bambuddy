@@ -376,6 +376,7 @@ def _get_start_ams_mapping(data: dict, archive_id: int | None) -> list[int] | No
         stored_ams_mapping = _print_ams_mappings.get(archive_id)
     return stored_ams_mapping
 
+
 def mark_printer_stopped_by_user(printer_id: int) -> None:
     """Mark that the active print on this printer was stopped by the user from the queue UI.
 
@@ -385,6 +386,7 @@ def mark_printer_stopped_by_user(printer_id: int) -> None:
     """
     _user_stopped_printers.add(printer_id)
     logging.getLogger(__name__).info("Marked printer %s as user-stopped from queue", printer_id)
+
 
 _last_status_broadcast: dict[int, str] = {}
 # Track printers where we've updated nozzle_count
@@ -2216,8 +2218,7 @@ async def on_print_complete(printer_id: int, data: dict):
     _raw_status = data.get("status", "completed")
     if printer_id in _user_stopped_printers and _raw_status in ("failed", "aborted"):
         logger.info(
-            "[CALLBACK] Overriding status '%s' -> 'cancelled' for printer %s "
-            "(print was stopped from queue by user)",
+            "[CALLBACK] Overriding status '%s' -> 'cancelled' for printer %s (print was stopped from queue by user)",
             _raw_status,
             printer_id,
         )
@@ -2654,7 +2655,7 @@ async def on_print_complete(printer_id: int, data: dict):
                 logger.warning("[NOTIFY-BG] Failed to send notification without archive: %s", e, exc_info=True)
 
         task = asyncio.create_task(_notify_no_archive())
-        task.add_done_callback(lambda t: None)
+        task.add_done_callback(lambda _t: None)
         return
 
     log_timing("Archive lookup")

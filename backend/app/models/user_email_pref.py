@@ -1,11 +1,17 @@
 """User email notification preference model."""
 
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base
+
+if TYPE_CHECKING:
+    from backend.app.models.user import User
 
 
 class UserEmailPreference(Base):
@@ -28,4 +34,4 @@ class UserEmailPreference(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     # Relationship
-    user: Mapped["User"] = relationship(back_populates="email_preferences")
+    user: Mapped[User] = relationship(back_populates="email_preferences")
