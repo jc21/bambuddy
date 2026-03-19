@@ -26,6 +26,7 @@ All notable changes to Bambuddy will be documented in this file.
 ### Changed
 
 ### Improved
+- **Print Command Response Verification** ([#737](https://github.com/maziggy/bambuddy/issues/737)) — After sending a print command, BambuBuddy now monitors whether the printer's state changes within 15 seconds. If the printer silently ignores the command (observed on some P1S firmware versions where the MQTT command handler becomes unresponsive), a warning is logged for diagnostics. This aids debugging when users report prints not starting despite BambuBuddy showing success.
 - **Compact Assign Spool Modal** ([#725](https://github.com/maziggy/bambuddy/issues/725)) — The "Assign Spool" modal now uses a compact 3-column grid layout instead of a vertical list, showing more spools at once without scrolling. Each card displays the spool name, color, and remaining/total weight. The modal is wider with a taller scroll area. Requested by @RosdasHH.
 - **Reformatted AMS Drying Presets Table** ([#732](https://github.com/maziggy/bambuddy/issues/732)) — The drying presets table in Settings now groups columns by AMS type (AMS 2 Pro, AMS-HT) with inline °C and h unit labels next to each input, replacing the previous flat column layout. Requested by @cadtoolbox.
 
