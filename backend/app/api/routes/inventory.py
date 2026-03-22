@@ -1032,6 +1032,58 @@ async def assign_spool(
                 spool.id,
                 data.printer_id,
             )
+
+            # Save slot preset mapping so the UI shows the correct preset name.
+            # Use slicer_filament_name (authoritative) with fallback to tray_sub_brands.
+            try:
+                from backend.app.models.slot_preset import SlotPresetMapping
+
+                preset_name = spool.slicer_filament_name or tray_sub_brands or tray_type
+                preset_source = "cloud"
+                if sf:
+                    base_sf_mapping = sf.split("_")[0] if "_" in sf else sf
+                    try:
+                        local_id = int(base_sf_mapping)
+                        preset_id_to_save = f"local_{local_id}"
+                        preset_source = "local"
+                    except (ValueError, TypeError):
+                        # Cloud or builtin preset — convert filament_id to setting_id
+                        preset_id_to_save = filament_id_to_setting_id(tray_info_idx) if tray_info_idx else setting_id
+                else:
+                    preset_id_to_save = filament_id_to_setting_id(tray_info_idx) if tray_info_idx else ""
+
+                if preset_id_to_save:
+                    existing_mapping = await db.execute(
+                        select(SlotPresetMapping).where(
+                            SlotPresetMapping.printer_id == data.printer_id,
+                            SlotPresetMapping.ams_id == data.ams_id,
+                            SlotPresetMapping.tray_id == data.tray_id,
+                        )
+                    )
+                    mapping = existing_mapping.scalar_one_or_none()
+                    if mapping:
+                        mapping.preset_id = preset_id_to_save
+                        mapping.preset_name = preset_name
+                        mapping.preset_source = preset_source
+                    else:
+                        mapping = SlotPresetMapping(
+                            printer_id=data.printer_id,
+                            ams_id=data.ams_id,
+                            tray_id=data.tray_id,
+                            preset_id=preset_id_to_save,
+                            preset_name=preset_name,
+                            preset_source=preset_source,
+                        )
+                        db.add(mapping)
+                    await db.commit()
+                    logger.info(
+                        "Saved slot preset mapping: preset_id=%r, preset_name=%r",
+                        preset_id_to_save,
+                        preset_name,
+                    )
+            except Exception as e:
+                logger.warning("Failed to save slot preset mapping: %s", e)
+
     except Exception as e:
         logger.warning("MQTT auto-configure failed for spool %d: %s", spool.id, e)
 

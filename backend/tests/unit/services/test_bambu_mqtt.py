@@ -4,6 +4,8 @@ Tests for the BambuMQTTClient service.
 These tests focus on timelapse tracking during prints.
 """
 
+import json
+
 import pytest
 
 
@@ -604,6 +606,133 @@ class TestAMSDataMerging:
         assert ams_data[0]["tray"][0]["tray_type"] == "PLA", "A1 should still have PLA"
         assert ams_data[1]["tray"][0]["tray_type"] == "PLA", "B1 should still have PLA"
 
+    def test_shutdown_message_preserves_ams_data(self, mqtt_client):
+        """Printer shutdown (power_on_flag=False) must not wipe AMS slot data (#765).
+
+        When a printer shuts down it sends a final MQTT message with
+        tray_exist_bits='0' and power_on_flag=False. This all-zero value
+        previously caused every slot to be cleared, which then triggered
+        auto-unlink of all spool assignments on reconnect.
+        """
+        # Initial state: two AMS units with loaded spools
+        initial_ams = {
+            "ams": [
+                {
+                    "id": 0,
+                    "tray": [
+                        {"id": 0, "tray_type": "PLA", "tray_color": "FF0000FF", "remain": 80},
+                        {"id": 1, "tray_type": "PETG", "tray_color": "00FF00FF", "remain": 60},
+                    ],
+                },
+                {
+                    "id": 1,
+                    "tray": [
+                        {"id": 0, "tray_type": "PETG", "tray_color": "DBDDD9FF", "remain": 90},
+                        {"id": 1, "tray_type": "PETG", "tray_color": "67DB25FF", "remain": 70},
+                    ],
+                },
+            ],
+            "tray_exist_bits": "33",  # Slots 0,1 of each AMS (0b00110011)
+            "power_on_flag": True,
+        }
+        mqtt_client._handle_ams_data(initial_ams)
+
+        # Verify initial state
+        ams_data = mqtt_client.state.raw_data["ams"]
+        assert ams_data[0]["tray"][0]["tray_type"] == "PLA"
+        assert ams_data[1]["tray"][0]["tray_type"] == "PETG"
+
+        # Simulate printer shutdown — all-zero bits with power_on_flag=False
+        shutdown_ams = {
+            "ams_exist_bits": "0",
+            "tray_exist_bits": "0",
+            "power_on_flag": False,
+            "insert_flag": False,
+            "tray_now": "0",
+            "version": 0,
+        }
+        mqtt_client._handle_ams_data(shutdown_ams)
+
+        # AMS slot data MUST be preserved — shutdown should not clear it
+        ams_data = mqtt_client.state.raw_data["ams"]
+        assert ams_data[0]["tray"][0]["tray_type"] == "PLA", "Shutdown must not clear AMS 0 slot 0"
+        assert ams_data[0]["tray"][0]["tray_color"] == "FF0000FF", "Shutdown must not clear AMS 0 slot 0 color"
+        assert ams_data[0]["tray"][1]["tray_type"] == "PETG", "Shutdown must not clear AMS 0 slot 1"
+        assert ams_data[1]["tray"][0]["tray_type"] == "PETG", "Shutdown must not clear AMS 1 slot 0"
+        assert ams_data[1]["tray"][1]["tray_type"] == "PETG", "Shutdown must not clear AMS 1 slot 1"
+
+    def test_genuine_removal_still_clears_with_power_on(self, mqtt_client):
+        """Genuine spool removal (power_on_flag=True) must still clear slot data.
+
+        Ensures the #765 fix doesn't break normal spool removal detection.
+        """
+        # Initial state: AMS with loaded spool
+        initial_ams = {
+            "ams": [
+                {
+                    "id": 0,
+                    "tray": [
+                        {"id": 0, "tray_type": "PLA", "tray_color": "FF0000", "remain": 80},
+                        {"id": 1, "tray_type": "PETG", "tray_color": "00FF00", "remain": 60},
+                    ],
+                },
+            ],
+            "tray_exist_bits": "3",  # Both slots occupied (0b11)
+            "power_on_flag": True,
+        }
+        mqtt_client._handle_ams_data(initial_ams)
+
+        # Spool removed from slot 1 while printer is running
+        removal_ams = {
+            "ams": [
+                {
+                    "id": 0,
+                    "tray": [{"id": 0}, {"id": 1}],
+                },
+            ],
+            "tray_exist_bits": "1",  # Only slot 0 occupied (0b01)
+            "power_on_flag": True,
+        }
+        mqtt_client._handle_ams_data(removal_ams)
+
+        # Slot 0 preserved, slot 1 cleared
+        ams_data = mqtt_client.state.raw_data["ams"]
+        assert ams_data[0]["tray"][0]["tray_type"] == "PLA", "Slot 0 should be preserved"
+        assert ams_data[0]["tray"][1]["tray_type"] == "", "Slot 1 should be cleared on removal"
+        assert ams_data[0]["tray"][1]["tray_color"] == "", "Slot 1 color should be cleared"
+
+    def test_power_on_flag_defaults_true_when_absent(self, mqtt_client):
+        """When power_on_flag is not in the MQTT data, clearing must proceed normally.
+
+        Ensures backwards compatibility with firmware that doesn't send power_on_flag.
+        """
+        # Initial state
+        initial_ams = {
+            "ams": [
+                {
+                    "id": 0,
+                    "tray": [
+                        {"id": 0, "tray_type": "PLA", "tray_color": "FF0000", "remain": 80},
+                    ],
+                },
+            ],
+            "tray_exist_bits": "1",
+        }
+        mqtt_client._handle_ams_data(initial_ams)
+
+        # Update WITHOUT power_on_flag — should still clear when bit=0
+        update_ams = {
+            "ams": [{"id": 0, "tray": [{"id": 0}]}],
+            "tray_exist_bits": "0",
+            # No power_on_flag key at all
+        }
+        mqtt_client._handle_ams_data(update_ams)
+
+        ams_data = mqtt_client.state.raw_data["ams"]
+        assert ams_data[0]["tray"][0]["tray_type"] == "", (
+            "Without power_on_flag, clearing should proceed (defaults to True)"
+        )
+
 
 class TestNozzleRackData:
     """Tests for nozzle rack data parsing from H2 series device.nozzle.info."""
@@ -863,6 +992,13 @@ class TestNozzleRackData:
 class TestRequestTopicFailSafe:
     """Tests for graceful degradation when broker rejects request topic subscription."""
 
+    @pytest.fixture(autouse=True)
+    def clear_request_topic_cache(self):
+        """Clear class-level cache before each test to avoid cross-test pollution."""
+        from backend.app.services.bambu_mqtt import BambuMQTTClient
+
+        BambuMQTTClient._request_topic_cache.clear()
+
     @pytest.fixture
     def mqtt_client(self):
         from backend.app.services.bambu_mqtt import BambuMQTTClient
@@ -969,6 +1105,79 @@ class TestRequestTopicFailSafe:
         # Only report topic subscribed, not request topic
         assert len(subscribe_calls) == 1
         assert subscribe_calls[0] == mqtt_client.topic_subscribe
+
+    def test_cache_persists_across_instances(self):
+        """New client instance inherits request topic unsupported state from cache."""
+        from backend.app.services.bambu_mqtt import BambuMQTTClient
+
+        client1 = BambuMQTTClient(
+            ip_address="192.168.1.100",
+            serial_number="TEST_CACHE",
+            access_code="12345678",
+        )
+        assert client1._request_topic_supported is True
+
+        # Simulate disconnect-after-subscribe disabling the topic
+        client1._request_topic_sub_time = __import__("time").time()
+        client1._request_topic_confirmed = False
+        client1._last_message_time = 0.0
+        client1._on_disconnect(None, None)
+        assert client1._request_topic_supported is False
+
+        # New instance for same serial should inherit the cached state
+        client2 = BambuMQTTClient(
+            ip_address="192.168.1.100",
+            serial_number="TEST_CACHE",
+            access_code="12345678",
+        )
+        assert client2._request_topic_supported is False
+
+    def test_cache_does_not_affect_different_serial(self):
+        """Cache is per-serial — different printer is unaffected."""
+        from backend.app.services.bambu_mqtt import BambuMQTTClient
+
+        BambuMQTTClient._request_topic_cache["SERIAL_A"] = False
+
+        client = BambuMQTTClient(
+            ip_address="192.168.1.100",
+            serial_number="SERIAL_B",
+            access_code="12345678",
+        )
+        assert client._request_topic_supported is True
+
+    def test_cache_updated_on_suback_success(self):
+        """Successful SUBACK caches positive confirmation."""
+        from paho.mqtt.reasoncodes import ReasonCode
+
+        from backend.app.services.bambu_mqtt import BambuMQTTClient
+
+        client = BambuMQTTClient(
+            ip_address="192.168.1.100",
+            serial_number="TEST_SUBACK",
+            access_code="12345678",
+        )
+        client._request_topic_sub_mid = 42
+        rc = ReasonCode(9, identifier=0)  # Success
+        client._on_subscribe(None, None, 42, [rc], None)
+
+        assert BambuMQTTClient._request_topic_cache["TEST_SUBACK"] is True
+
+    def test_cache_updated_on_suback_rejection(self):
+        """SUBACK rejection caches negative state."""
+        from paho.mqtt.reasoncodes import ReasonCode
+
+        from backend.app.services.bambu_mqtt import BambuMQTTClient
+
+        client = BambuMQTTClient(
+            ip_address="192.168.1.100",
+            serial_number="TEST_REJECT",
+            access_code="12345678",
+        )
+        client._request_topic_sub_mid = 42
+        rc = ReasonCode(9, identifier=0x80)  # Failure
+        client._on_subscribe(None, None, 42, [rc], None)
+
+        assert BambuMQTTClient._request_topic_cache["TEST_REJECT"] is False
 
 
 class TestRequestTopicAmsMapping:
@@ -2376,3 +2585,74 @@ class TestDeveloperModeDetection:
                 }
             )
         assert mqtt_client.state.developer_mode is False
+
+
+class TestSendDryingCommand:
+    """Tests for send_drying_command MQTT payload construction."""
+
+    @pytest.fixture
+    def mqtt_client(self):
+        """Create a BambuMQTTClient with a mock MQTT client."""
+        from unittest.mock import MagicMock
+
+        from backend.app.services.bambu_mqtt import BambuMQTTClient
+
+        client = BambuMQTTClient(
+            ip_address="192.168.1.100",
+            serial_number="TEST123",
+            access_code="12345678",
+        )
+        client._client = MagicMock()
+        return client
+
+    def test_rotate_tray_false_by_default(self, mqtt_client):
+        """Verify rotate_tray defaults to False in the MQTT payload."""
+        mqtt_client.send_drying_command(ams_id=0, temp=55, duration=4, mode=1, filament="PLA")
+
+        call_args = mqtt_client._client.publish.call_args
+        payload = json.loads(call_args[0][1])
+        assert payload["print"]["rotate_tray"] is False
+
+    def test_rotate_tray_true_when_enabled(self, mqtt_client):
+        """Verify rotate_tray is True when explicitly enabled."""
+        mqtt_client.send_drying_command(ams_id=0, temp=55, duration=4, mode=1, filament="PLA", rotate_tray=True)
+
+        call_args = mqtt_client._client.publish.call_args
+        payload = json.loads(call_args[0][1])
+        assert payload["print"]["rotate_tray"] is True
+
+    def test_rotate_tray_false_on_stop(self, mqtt_client):
+        """Verify rotate_tray is False when stopping drying (mode=0)."""
+        mqtt_client.send_drying_command(ams_id=0, temp=0, duration=0, mode=0)
+
+        call_args = mqtt_client._client.publish.call_args
+        payload = json.loads(call_args[0][1])
+        assert payload["print"]["rotate_tray"] is False
+
+    def test_all_required_fields_present(self, mqtt_client):
+        """Verify all required MQTT fields are present in the drying command."""
+        mqtt_client.send_drying_command(ams_id=128, temp=75, duration=8, mode=1, filament="ABS", rotate_tray=True)
+
+        call_args = mqtt_client._client.publish.call_args
+        payload = json.loads(call_args[0][1])
+        cmd = payload["print"]
+        assert cmd["command"] == "ams_filament_drying"
+        assert cmd["ams_id"] == 128
+        assert cmd["temp"] == 75
+        assert cmd["duration"] == 8
+        assert cmd["mode"] == 1
+        assert cmd["rotate_tray"] is True
+        assert cmd["filament"] == "ABS"
+        assert cmd["cooling_temp"] == 20
+        assert cmd["humidity"] == 0
+        assert cmd["close_power_conflict"] is False
+        assert "sequence_id" in cmd
+
+    def test_publishes_with_qos_1(self, mqtt_client):
+        """Verify drying commands are published with QoS 1."""
+        mqtt_client.send_drying_command(ams_id=0, temp=55, duration=4)
+
+        call_args = mqtt_client._client.publish.call_args
+        # qos may be positional arg [2] or keyword
+        qos = call_args.kwargs.get("qos", call_args[0][2] if len(call_args[0]) > 2 else None)
+        assert qos == 1

@@ -2,18 +2,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, AlertTriangle, Calendar, Loader2, Pencil, Printer, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { PrintQueueItemCreate, PrintQueueItemUpdate } from '../../api/client';
+import type { PrintQueueItemCreate, PrintQueueItemUpdate, SpoolAssignment } from '../../api/client';
 import { api } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
+import { Card, CardContent } from '../Card';
+import { Button } from '../Button';
+import { ConfirmModal } from '../ConfirmModal';
 import { useToast } from '../../contexts/ToastContext';
-import { useFilamentMapping } from '../../hooks/useFilamentMapping';
+import { buildLoadedFilaments, useFilamentMapping } from '../../hooks/useFilamentMapping';
 import { useMultiPrinterFilamentMapping, type PerPrinterConfig } from '../../hooks/useMultiPrinterFilamentMapping';
 import { getColorName } from '../../utils/colors';
-import { isPlaceholderDate } from '../../utils/amsHelpers';
 import { getCurrencySymbol } from '../../utils/currency';
 import { toDateTimeLocalValue, parseUTCDate } from '../../utils/date';
-import { Button } from '../Button';
-import { Card, CardContent } from '../Card';
+import { getGlobalTrayId, isPlaceholderDate } from '../../utils/amsHelpers';
 import { FilamentMapping } from './FilamentMapping';
 import { FilamentOverride } from './FilamentOverride';
 import { PlateSelector } from './PlateSelector';
@@ -56,6 +57,13 @@ export function PrintModal({
   // Determine if we're printing a library file
   const isLibraryFile = !!libraryFileId && !archiveId;
 
+  type FilamentWarningItem = {
+    printerName: string;
+    slotLabel: string;
+    requiredGrams: number;
+    remainingGrams: number;
+  };
+
   // Multiple printer selection (used for all modes now)
   const [selectedPrinters, setSelectedPrinters] = useState<number[]>(() => {
     // Initialize with the queue item's printer if editing
@@ -68,15 +76,16 @@ export function PrintModal({
     return [];
   });
 
-  const [selectedPlate, setSelectedPlate] = useState<number | null>(() => {
-    if (mode === 'edit-queue-item' && queueItem) {
-      return queueItem.plate_id;
+  // Multi-select plates: in add-to-queue mode users can pick a subset of plates
+  const [selectedPlates, setSelectedPlates] = useState<Set<number>>(() => {
+    if (mode === 'edit-queue-item' && queueItem?.plate_id != null) {
+      return new Set([queueItem.plate_id]);
     }
-    return null;
+    return new Set();
   });
 
-  // Queue all plates at once (only for add-to-queue mode with multi-plate files)
-  const [queueAllPlates, setQueueAllPlates] = useState(false);
+  // Derived single-plate value for filament queries and single-select contexts
+  const selectedPlate = selectedPlates.size === 1 ? [...selectedPlates][0] : null;
 
   const [printOptions, setPrintOptions] = useState<PrintOptions>(() => {
     if (mode === 'edit-queue-item' && queueItem) {
@@ -191,6 +200,8 @@ export function PrintModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitProgress, setSubmitProgress] = useState({ current: 0, total: 0 });
 
+  const [filamentWarningItems, setFilamentWarningItems] = useState<FilamentWarningItem[] | null>(null);
+
   // Track which printers have had the "Expand custom mapping by default" setting applied
   // This ensures the setting only affects initial state, not preventing unchecking
   const [initialExpandApplied, setInitialExpandApplied] = useState<Set<number>>(new Set());
@@ -212,6 +223,13 @@ export function PrintModal({
   const { data: printers, isLoading: loadingPrinters } = useQuery({
     queryKey: ['printers'],
     queryFn: api.getPrinters,
+  });
+
+  const { data: spoolAssignments } = useQuery({
+    queryKey: ['spool-assignments'],
+    queryFn: () => api.getAssignments(),
+    staleTime: 30 * 1000,
+    enabled: ((mode === 'reprint' || mode === 'add-to-queue') && assignmentMode === 'printer') || (isLibraryFile && mode === 'reprint'),
   });
 
   // Fetch archive details to get sliced_for_model
@@ -305,10 +323,10 @@ export function PrintModal({
 
   // Auto-select first plate when plates load (single or multi-plate)
   useEffect(() => {
-    if (platesData?.plates && platesData.plates.length >= 1 && !selectedPlate) {
-      setSelectedPlate(platesData.plates[0].index);
+    if (platesData?.plates && platesData.plates.length >= 1 && selectedPlates.size === 0) {
+      setSelectedPlates(new Set([platesData.plates[0].index]));
     }
-  }, [platesData, selectedPlate]);
+  }, [platesData, selectedPlates.size]);
 
   // Auto-select first printer when only one available
   useEffect(() => {
@@ -396,6 +414,36 @@ export function PrintModal({
   const isMultiPlate = platesData?.is_multi_plate ?? false;
   const plates = platesData?.plates ?? [];
 
+  const spoolAssignmentsByPrinter = useMemo(() => {
+    const map = new Map<number, Map<number, SpoolAssignment>>();
+    if (!spoolAssignments) return map;
+    spoolAssignments.forEach((assignment) => {
+      const isExternal = assignment.ams_id === 255;
+      const globalTrayId = getGlobalTrayId(
+        assignment.ams_id,
+        assignment.tray_id,
+        isExternal
+      );
+      const printerMap = map.get(assignment.printer_id) ?? new Map();
+      printerMap.set(globalTrayId, assignment);
+      map.set(assignment.printer_id, printerMap);
+    });
+    return map;
+  }, [spoolAssignments]);
+
+  const filamentWarningMessage = useMemo(() => {
+    if (!filamentWarningItems || filamentWarningItems.length === 0) return '';
+    const lines = filamentWarningItems.map((item) =>
+      t('printModal.insufficientFilamentLine', {
+        printer: item.printerName,
+        slot: item.slotLabel,
+        required: Math.round(item.requiredGrams),
+        remaining: Math.round(item.remainingGrams),
+      })
+    );
+    return [t('printModal.insufficientFilamentMessage'), ...lines].join('\n');
+  }, [filamentWarningItems, t]);
+
   // Add to queue mutation (single printer)
   const addToQueueMutation = useMutation({
     mutationFn: (data: PrintQueueItemCreate) => api.addToQueue(data),
@@ -415,8 +463,70 @@ export function PrintModal({
     },
   });
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent, options?: { skipFilamentCheck?: boolean }) => {
     e?.preventDefault();
+
+    if (
+      !options?.skipFilamentCheck &&
+      !settings?.disable_filament_warnings &&
+      (mode === 'reprint' || mode === 'add-to-queue') &&
+      assignmentMode === 'printer'
+    ) {
+      const warningItems: FilamentWarningItem[] = [];
+      const filamentReqs = effectiveFilamentReqs?.filaments ?? [];
+
+      if (filamentReqs.length > 0 && spoolAssignmentsByPrinter.size > 0) {
+        const getRemainingWeight = (labelWeight: number, weightUsed: number) => {
+          if (!Number.isFinite(labelWeight) || labelWeight <= 0) return null;
+          if (!Number.isFinite(weightUsed) || weightUsed < 0) return null;
+          return Math.max(0, labelWeight - weightUsed);
+        };
+
+        for (const printerId of selectedPrinters) {
+          const printerMapping = selectedPrinters.length > 1
+            ? multiPrinterMapping.getFinalMapping(printerId)
+            : amsMapping;
+          if (!printerMapping) continue;
+
+          const printerStatusForWarning = selectedPrinters.length > 1
+            ? multiPrinterMapping.printerResults.find((result) => result.printerId === printerId)?.status
+            : printerStatus;
+
+          const loadedFilaments = buildLoadedFilaments(printerStatusForWarning);
+          const slotLabelByTray = new Map(loadedFilaments.map((f) => [f.globalTrayId, f.label]));
+          const assignments = spoolAssignmentsByPrinter.get(printerId);
+          const printerName = printers?.find((p) => p.id === printerId)?.name ?? `Printer ${printerId}`;
+
+          if (!assignments) continue;
+
+          filamentReqs.forEach((req) => {
+            if (!req.slot_id || req.slot_id <= 0) return;
+            const globalTrayId = printerMapping[req.slot_id - 1];
+            if (!Number.isFinite(globalTrayId) || globalTrayId < 0) return;
+
+            const assignment = assignments.get(globalTrayId);
+            const spool = assignment?.spool;
+            if (!spool) return;
+
+            const remainingGrams = getRemainingWeight(spool.label_weight, spool.weight_used);
+            if (remainingGrams === null) return;
+            if (remainingGrams >= req.used_grams) return;
+
+            warningItems.push({
+              printerName,
+              slotLabel: slotLabelByTray.get(globalTrayId) ?? `Slot ${req.slot_id}`,
+              requiredGrams: req.used_grams,
+              remainingGrams,
+            });
+          });
+        }
+      }
+
+      if (warningItems.length > 0) {
+        setFilamentWarningItems(warningItems);
+        return;
+      }
+    }
 
     // Validate printer/model selection
     if (assignmentMode === 'printer' && selectedPrinters.length === 0) {
@@ -430,7 +540,9 @@ export function PrintModal({
 
     setIsSubmitting(true);
     // Calculate total API calls: plates × printers (or 1 for model-based)
-    const platesToQueue = queueAllPlates ? plates : [null];
+    const platesToQueue = selectedPlates.size > 1
+      ? plates.filter(p => selectedPlates.has(p.index))
+      : [null];
     const totalCount = assignmentMode === 'model'
       ? platesToQueue.length
       : selectedPrinters.length * platesToQueue.length;
@@ -564,7 +676,7 @@ export function PrintModal({
 
           try {
             if (mode === 'reprint') {
-              // Reprint mode - start print immediately (single plate only, queueAllPlates not available)
+              // Reprint mode - start print immediately (single plate only, multi-select not available)
               const printerMapping = getMappingForPrinter(printerId);
               if (isLibraryFile) {
                 await api.printLibraryFile(libraryFileId!, printerId, {
@@ -651,11 +763,11 @@ export function PrintModal({
     // Model-based assignment only works in queue modes (not immediate reprint)
     if (assignmentMode === 'model' && mode === 'reprint') return false;
 
-    // For multi-plate files, need a selected plate (or queue-all)
-    if (isMultiPlate && !selectedPlate && !queueAllPlates) return false;
+    // For multi-plate files, need at least one plate selected
+    if (isMultiPlate && selectedPlates.size === 0) return false;
 
     return true;
-  }, [selectedPrinters.length, assignmentMode, targetModel, mode, isMultiPlate, selectedPlate, queueAllPlates, isPending]);
+  }, [selectedPrinters.length, assignmentMode, targetModel, mode, isMultiPlate, selectedPlates.size, isPending]);
 
   // Modal title and action button text based on mode
   const getModalConfig = () => {
@@ -674,8 +786,8 @@ export function PrintModal({
     }
     if (mode === 'add-to-queue') {
       let submitText = t('queue.addToQueue');
-      if (queueAllPlates && plates.length > 1) {
-        submitText = t('queue.queueAllPlates', { count: plates.length });
+      if (selectedPlates.size > 1) {
+        submitText = t('queue.queueSelectedPlates', { count: selectedPlates.size });
       } else if (printerCount > 1) {
         submitText = t('queue.queueToPrinters', { count: printerCount });
       }
@@ -709,7 +821,7 @@ export function PrintModal({
   // - Single printer selected
   // - For archives: plate is selected (for multi-plate) or not required (single-plate)
   // - For library files: always show (no plate selection)
-  const showFilamentMapping = effectivePrinterId && !queueAllPlates && (
+  const showFilamentMapping = effectivePrinterId && selectedPlates.size <= 1 && (
     isLibraryFile || (isMultiPlate ? selectedPlate !== null : true)
   );
 
@@ -760,10 +872,28 @@ export function PrintModal({
             <PlateSelector
               plates={plates}
               isMultiPlate={isMultiPlate}
-              selectedPlate={selectedPlate}
-              onSelect={setSelectedPlate}
-              queueAll={queueAllPlates}
-              onQueueAllChange={mode === 'add-to-queue' ? setQueueAllPlates : undefined}
+              selectedPlates={selectedPlates}
+              onToggle={(plateIndex) => {
+                setSelectedPlates(prev => {
+                  const next = new Set(prev);
+                  if (mode === 'add-to-queue') {
+                    // Multi-select: toggle the plate
+                    if (next.has(plateIndex)) {
+                      next.delete(plateIndex);
+                    } else {
+                      next.add(plateIndex);
+                    }
+                  } else {
+                    // Single-select: replace selection
+                    next.clear();
+                    next.add(plateIndex);
+                  }
+                  return next;
+                });
+              }}
+              onSelectAll={mode === 'add-to-queue' ? () => setSelectedPlates(new Set(plates.map(p => p.index))) : undefined}
+              onDeselectAll={mode === 'add-to-queue' ? () => setSelectedPlates(new Set()) : undefined}
+              multiSelect={mode === 'add-to-queue'}
             />
 
             {/* Printer selection with per-printer mapping — hidden when printer is pre-selected via props */}
@@ -892,6 +1022,21 @@ export function PrintModal({
           </form>
         </CardContent>
       </Card>
+
+      {filamentWarningItems && filamentWarningItems.length > 0 && (
+        <ConfirmModal
+          title={t('printModal.insufficientFilamentTitle')}
+          message={filamentWarningMessage}
+          confirmText={t('printModal.printAnyway')}
+          cancelText={t('common.cancel')}
+          variant="warning"
+          onConfirm={() => {
+            setFilamentWarningItems(null);
+            void handleSubmit(undefined, { skipFilamentCheck: true });
+          }}
+          onCancel={() => setFilamentWarningItems(null)}
+        />
+      )}
     </div>
   );
 }

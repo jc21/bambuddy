@@ -26,6 +26,7 @@ import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
+import { getCurrencySymbol } from '../utils/currency';
 
 const PROJECT_COLORS = [
   '#ef4444', // red
@@ -46,10 +47,11 @@ interface ProjectModalProps {
   onClose: () => void;
   onSave: (data: ProjectCreate | ProjectUpdate) => void;
   isLoading: boolean;
+  currencySymbol: string;
   t: TFunction;
 }
 
-export function ProjectModal({ project, onClose, onSave, isLoading, t }: ProjectModalProps) {
+export function ProjectModal({ project, onClose, onSave, isLoading, currencySymbol, t }: ProjectModalProps) {
   const [name, setName] = useState(project?.name || '');
   const [description, setDescription] = useState(project?.description || '');
   const [color, setColor] = useState(project?.color || PROJECT_COLORS[0]);
@@ -59,6 +61,7 @@ export function ProjectModal({ project, onClose, onSave, isLoading, t }: Project
   const [tags, setTags] = useState((project as ProjectListItem & { tags?: string })?.tags || '');
   const [dueDate, setDueDate] = useState((project as ProjectListItem & { due_date?: string })?.due_date?.split('T')[0] || '');
   const [priority, setPriority] = useState((project as ProjectListItem & { priority?: string })?.priority || 'normal');
+  const [budget, setBudget] = useState(project?.budget?.toString() || '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +74,7 @@ export function ProjectModal({ project, onClose, onSave, isLoading, t }: Project
       tags: tags.trim() || undefined,
       due_date: dueDate || undefined,
       priority,
+      budget: budget.trim() ? parseFloat(budget) : null,
       ...(project && { status }),
     });
   };
@@ -204,6 +208,26 @@ export function ProjectModal({ project, onClose, onSave, isLoading, t }: Project
                 <option value="high">{t('projects.priorityHigh')}</option>
                 <option value="urgent">{t('projects.priorityUrgent')}</option>
               </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-white mb-1">
+              {t('projectDetail.cost.budget')}
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-bambu-gray pointer-events-none">
+                {currencySymbol}
+              </span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+                className="w-full bg-bambu-dark border border-bambu-dark-tertiary rounded pl-8 pr-3 py-2 text-white placeholder-bambu-gray focus:outline-none focus:border-bambu-green"
+                placeholder="0.00"
+              />
             </div>
           </div>
 
@@ -367,7 +391,7 @@ function ProjectCard({ project, onClick, onEdit, onDelete, hasPermission, t }: P
                         {colors.slice(0, 5).map((col) => (
                           <div
                             key={col}
-                            className="w-3 h-3 rounded-full border border-white/20"
+                            className="w-3 h-3 rounded-full border border-black/20"
                             style={{ backgroundColor: col.startsWith('#') ? col : `#${col}` }}
                             title={col}
                           />
@@ -586,6 +610,13 @@ export function ProjectsPage() {
   const [editingProject, setEditingProject] = useState<ProjectListItem | undefined>();
   const [statusFilter, setStatusFilter] = useState<string>('active');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: api.getSettings,
+  });
+
+  const currencySymbol = getCurrencySymbol(settings?.currency || 'USD');
 
   const { data: projects, isLoading } = useQuery({
     queryKey: ['projects', statusFilter === 'all' ? undefined : statusFilter],
@@ -899,6 +930,7 @@ export function ProjectsPage() {
           }}
           onSave={handleSave}
           isLoading={createMutation.isPending || updateMutation.isPending}
+          currencySymbol={currencySymbol}
           t={t}
         />
       )}

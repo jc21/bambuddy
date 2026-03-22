@@ -555,7 +555,7 @@ export function EmbeddedCameraViewer({ printerId, printerName, viewerIndex = 0, 
   return (
     <div
       ref={containerRef}
-      className={`${isFullscreen ? 'fixed inset-0 z-[100]' : 'fixed z-50 rounded-lg shadow-2xl border border-bambu-dark-tertiary'} bg-bambu-dark-secondary overflow-hidden`}
+      className={`${isFullscreen ? 'fixed inset-0 z-[100]' : 'fixed z-40 rounded-lg shadow-2xl border border-bambu-dark-tertiary'} bg-bambu-dark-secondary overflow-hidden`}
       style={isFullscreen ? undefined : {
         left: state.x,
         top: state.y,
@@ -686,7 +686,8 @@ export function EmbeddedCameraViewer({ printerId, printerName, viewerIndex = 0, 
             alt="Camera stream"
             className="max-w-full max-h-full object-contain select-none"
             style={{
-              transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+              transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px) rotate(${printer?.camera_rotation || 0}deg)`,
+              ...(printer?.camera_rotation === 90 || printer?.camera_rotation === 270 ? { maxWidth: '100%', maxHeight: '100%' } : {}),
               cursor: zoomLevel > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default',
             }}
             onError={handleStreamError}

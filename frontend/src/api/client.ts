@@ -99,6 +99,7 @@ export interface Printer {
   external_camera_url: string | null;
   external_camera_type: string | null;  // "mjpeg", "rtsp", "snapshot"
   external_camera_enabled: boolean;
+  camera_rotation: number;  // 0, 90, 180, 270 degrees
   plate_detection_enabled: boolean;  // Check plate before print
   plate_detection_roi?: PlateDetectionROI;  // ROI for plate detection
   created_at: string;
@@ -279,6 +280,7 @@ export interface PrinterCreate {
   external_camera_url?: string | null;
   external_camera_type?: string | null;
   external_camera_enabled?: boolean;
+  camera_rotation?: number;
   plate_detection_enabled?: boolean;
   plate_detection_roi?: PlateDetectionROI;
 }
@@ -349,6 +351,8 @@ export interface Archive {
   f3d_path: string | null;
   duplicates: ArchiveDuplicate[] | null;
   duplicate_count: number;
+  duplicate_sequence: number;  // 0 = original, 1+ = nth duplicate
+  original_archive_id: number | null;  // ID of the first/original archive
   object_count: number | null;
   print_name: string | null;
   print_time_seconds: number | null;
@@ -549,6 +553,7 @@ export interface ProjectStats {
   remaining_parts: number | null;  // Remaining parts
   bom_total_items: number;
   bom_completed_items: number;
+  bom_cost: number;
 }
 
 export interface ProjectChildPreview {
@@ -607,6 +612,7 @@ export interface ProjectListItem {
   status: string;
   target_count: number | null;  // Target number of plates/print jobs
   target_parts_count: number | null;  // Target number of parts/objects
+  budget: number | null;
   created_at: string;
   archive_count: number;  // Number of print jobs (plates)
   total_items: number;  // Sum of quantities (total items printed, including failed)
@@ -627,7 +633,7 @@ export interface ProjectCreate {
   tags?: string;
   due_date?: string;
   priority?: string;
-  budget?: number;
+  budget?: number | null;
   parent_id?: number;
 }
 
@@ -642,7 +648,7 @@ export interface ProjectUpdate {
   tags?: string;
   due_date?: string;
   priority?: string;
-  budget?: number;
+  budget?: number | null;
   parent_id?: number;
 }
 
@@ -728,7 +734,7 @@ export interface ProjectImport {
   tags?: string;
   due_date?: string;
   priority?: string;
-  budget?: number;
+  budget?: number | null;
   bom_items?: BOMItemExport[];
   linked_folders?: LinkedFolderExport[];
 }
@@ -810,6 +816,8 @@ export interface AppSettings {
   // Date/time format settings
   date_format: 'system' | 'us' | 'eu' | 'iso';
   time_format: 'system' | '12h' | '24h';
+  // Filament tracking
+  disable_filament_warnings: boolean;  // Disable filament warnings (print insufficiency and assignment mismatch)
   // Default printer
   default_printer_id: number | null;
   // Dark mode theme settings
@@ -856,6 +864,10 @@ export interface AppSettings {
   bed_cooled_threshold: number;
   // Inventory low stock threshold
   low_stock_threshold: number;
+  // User email notifications toggle
+  user_notifications_enabled: boolean;
+  // Default sidebar order (admin-set for all users)
+  default_sidebar_order: string;
 }
 
 export type AppSettingsUpdate = Partial<AppSettings>;
@@ -2047,7 +2059,7 @@ export type Permission =
   | 'camera:view'
   | 'maintenance:read' | 'maintenance:create' | 'maintenance:update' | 'maintenance:delete'
   | 'kprofiles:read' | 'kprofiles:create' | 'kprofiles:update' | 'kprofiles:delete'
-  | 'notifications:read' | 'notifications:create' | 'notifications:update' | 'notifications:delete'
+  | 'notifications:read' | 'notifications:create' | 'notifications:update' | 'notifications:delete' | 'notifications:user_email'
   | 'notification_templates:read' | 'notification_templates:update'
   | 'external_links:read' | 'external_links:create' | 'external_links:update' | 'external_links:delete'
   | 'discovery:scan'
@@ -2109,6 +2121,14 @@ export interface PermissionCategory {
 export interface PermissionsListResponse {
   categories: PermissionCategory[];
   all_permissions: Permission[];
+}
+
+// User email notification preferences
+export interface UserEmailPreferences {
+  notify_print_start: boolean;
+  notify_print_complete: boolean;
+  notify_print_failed: boolean;
+  notify_print_stopped: boolean;
 }
 
 // Auth types
@@ -2290,6 +2310,15 @@ export const api = {
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     }),
 
+  // User Email Notifications
+  getUserEmailPreferences: () =>
+    request<UserEmailPreferences>('/user-notifications/preferences'),
+  updateUserEmailPreferences: (data: UserEmailPreferences) =>
+    request<UserEmailPreferences>('/user-notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
   // Groups
   getPermissions: () => request<PermissionsListResponse>('/groups/permissions'),
   getGroups: () => request<Group[]>('/groups/'),
@@ -2384,6 +2413,12 @@ export const api = {
   getCurrentPrintUser: (printerId: number) =>
     request<{ user_id?: number; username?: string }>(`/printers/${printerId}/current-print-user`),
 
+  // Print Speed Control
+  setPrintSpeed: (printerId: number, mode: number) =>
+    request<{ success: boolean; message: string }>(`/printers/${printerId}/print-speed?mode=${mode}`, {
+      method: 'POST',
+    }),
+
   // Chamber Light Control
   setChamberLight: (printerId: number, on: boolean) =>
     request<{ success: boolean; message: string }>(`/printers/${printerId}/chamber-light?on=${on}`, {
@@ -2391,9 +2426,9 @@ export const api = {
     }),
 
   // AMS Drying Control
-  startDrying: (printerId: number, amsId: number, temp: number, duration: number, filament: string = '') =>
+  startDrying: (printerId: number, amsId: number, temp: number, duration: number, filament: string = '', rotateTray: boolean = false) =>
     request<{ status: string; ams_id: number; temp: number; duration: number }>(
-      `/printers/${printerId}/drying/start?ams_id=${amsId}&temp=${temp}&duration=${duration}&filament=${encodeURIComponent(filament)}`,
+      `/printers/${printerId}/drying/start?ams_id=${amsId}&temp=${temp}&duration=${duration}&filament=${encodeURIComponent(filament)}&rotate_tray=${rotateTray}`,
       { method: 'POST' }
     ),
   stopDrying: (printerId: number, amsId: number) =>
@@ -3126,6 +3161,7 @@ export const api = {
 
   // Settings
   getSettings: () => request<AppSettings>('/settings/'),
+  getDefaultSidebarOrder: () => request<{ default_sidebar_order: string }>('/settings/default-sidebar-order'),
   updateSettings: (data: AppSettingsUpdate) =>
     request<AppSettings>('/settings/', {
       method: 'PUT',
@@ -4947,6 +4983,8 @@ export interface SpoolBuddyDevice {
   nfc_ok: boolean;
   scale_ok: boolean;
   uptime_s: number;
+  update_status: string | null;
+  update_message: string | null;
   online: boolean;
 }
 
@@ -4992,6 +5030,12 @@ export const spoolbuddyApi = {
   checkDaemonUpdate: (deviceId: string, includeBeta?: boolean) =>
     request<DaemonUpdateCheck>(`/spoolbuddy/devices/${deviceId}/update-check?include_beta=${includeBeta ?? false}`),
 
+  triggerUpdate: (deviceId: string) =>
+    request<{ status: string; message: string }>(`/spoolbuddy/devices/${deviceId}/update`, {
+      method: 'POST',
+      body: '{}',
+    }),
+
   writeTag: (deviceId: string, spoolId: number) =>
     request<{ status: string }>('/spoolbuddy/nfc/write-tag', {
       method: 'POST',
@@ -5010,6 +5054,7 @@ export interface BugReportRequest {
   email?: string;
   screenshot_base64?: string;
   include_support_info?: boolean;
+  debug_logs?: string;
 }
 
 export interface BugReportResponse {
@@ -5024,5 +5069,13 @@ export const bugReportApi = {
     request<BugReportResponse>('/bug-report/submit', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  startLogging: () =>
+    request<{ started: boolean; was_debug: boolean }>('/bug-report/start-logging', {
+      method: 'POST',
+    }),
+  stopLogging: (wasDebug: boolean) =>
+    request<{ logs: string }>(`/bug-report/stop-logging?was_debug=${wasDebug}`, {
+      method: 'POST',
     }),
 };

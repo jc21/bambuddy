@@ -217,7 +217,11 @@ class NotificationService:
             return False, "Topic is required"
 
         url = f"{server}/{topic}"
-        headers = {"Title": title}
+        # ntfy reads Title/Message from HTTP headers. httpx enforces ASCII
+        # for str header values, but printer names and filenames can contain
+        # non-ASCII characters (e.g. accented letters, CJK). Passing bytes
+        # bypasses the ASCII check — ntfy handles UTF-8 headers correctly.
+        headers: dict[str, str | bytes] = {"Title": title.encode("utf-8")}
 
         if auth_token:
             headers["Authorization"] = f"Bearer {auth_token}"
@@ -229,16 +233,16 @@ class NotificationService:
             # HTTP headers cannot contain newlines, but ntfy interprets
             # literal \n (backslash-n) as newlines in the Message header.
             headers["Filename"] = "photo.jpg"
-            headers["Message"] = message.replace("\n", "\\n")
+            headers["Message"] = message.replace("\n", "\\n").encode("utf-8")
             response = await client.put(url, content=image_data, headers=headers)
 
             if response.status_code == 400 and "attachments not allowed" in response.text:
                 # Server has attachments disabled — retry without the image
                 headers.pop("Filename", None)
                 headers.pop("Message", None)
-                response = await client.post(url, content=message, headers=headers)
+                response = await client.post(url, content=message.encode("utf-8"), headers=headers)
         else:
-            response = await client.post(url, content=message, headers=headers)
+            response = await client.post(url, content=message.encode("utf-8"), headers=headers)
 
         if response.status_code in (200, 204):
             return True, "Message sent successfully"
@@ -425,7 +429,9 @@ class NotificationService:
         else:
             return False, f"HTTP {response.status_code}: {response.text[:200]}"
 
-    async def _send_webhook(self, config: dict, title: str, message: str) -> tuple[bool, str]:
+    async def _send_webhook(
+        self, config: dict, title: str, message: str, image_data: bytes | None = None
+    ) -> tuple[bool, str]:
         """Send notification via generic webhook (POST JSON).
 
         Supports two payload formats:
@@ -454,6 +460,12 @@ class NotificationService:
                 "source": "Bambuddy",
             }
 
+        # Attach base64-encoded image when available (generic format only)
+        if image_data and payload_format != "slack":
+            import base64
+
+            data["image"] = base64.b64encode(image_data).decode("ascii")
+
         headers = {"Content-Type": "application/json"}
         if auth_header:
             # Support "Bearer token" or just "token" format
@@ -476,10 +488,11 @@ class NotificationService:
     async def _send_homeassistant(
         self, config: dict, title: str, message: str, db: AsyncSession | None = None
     ) -> tuple[bool, str]:
-        """Send notification via Home Assistant persistent notifications.
+        """Send notification via Home Assistant.
 
-        Uses the globally configured HA URL/token from settings,
-        and calls POST /api/services/persistent_notification/create.
+        Uses the globally configured HA URL/token from settings.
+        Defaults to persistent_notification/create, but supports
+        custom services via config["service"] (e.g. notify.mobile_app_myphone).
         """
         # Get HA connection settings from global config
         ha_url = ""
@@ -506,7 +519,34 @@ class NotificationService:
                 "Home Assistant is not configured. Please set HA URL and token in Settings → Network → Home Assistant."
             )
 
-        url = f"{ha_url.rstrip('/')}/api/services/persistent_notification/create"
+        # Determine which HA service to call - Default: persistent_notification.create
+        service = (config.get("service") or "").strip()
+        if service:
+            # Allow in different forms:
+            # - notify.mobile_app_<device>
+            # - notify/mobile_app_<device>
+            # - api/services/notify/mobile_app_<device>
+            service_str = service.lstrip("/")
+            if service_str.startswith("api/services/"):
+                endpoint = service_str
+            elif "/" in service_str:
+                endpoint = f"api/services/{service_str}"
+            elif "." in service_str:
+                domain, svc = service_str.split(".", 1)
+                endpoint = f"api/services/{domain}/{svc}"
+            else:
+                return False, (
+                    "Invalid Home Assistant service name. Use e.g. 'notify.mobile_app_yourdevice' or 'notify/your_service'."
+                )
+
+            if not re.match(r"^api/services/[a-zA-Z0-9_]+/[a-zA-Z0-9_]+$", endpoint):
+                return False, (
+                    "Invalid Home Assistant service name. Domain and service must only contain letters, numbers, and underscores."
+                )
+        else:
+            endpoint = "api/services/persistent_notification/create"
+
+        url = f"{ha_url.rstrip('/')}/{endpoint}"
         headers = {
             "Authorization": f"Bearer {ha_token}",
             "Content-Type": "application/json",
@@ -556,7 +596,7 @@ class NotificationService:
             elif provider.provider_type == "discord":
                 return await self._send_discord(config, title, message, image_data=image_data)
             elif provider.provider_type == "webhook":
-                return await self._send_webhook(config, title, message)
+                return await self._send_webhook(config, title, message, image_data=image_data)
             elif provider.provider_type == "homeassistant":
                 return await self._send_homeassistant(config, title, message, db=db)
             else:
@@ -1170,6 +1210,120 @@ class NotificationService:
     def clear_template_cache(self):
         """Clear the template cache. Call this when templates are updated."""
         self._template_cache.clear()
+
+    async def send_user_print_email(
+        self,
+        event_type: str,
+        created_by_id: int | None,
+        printer_name: str,
+        filename: str,
+        db: AsyncSession,
+    ) -> None:
+        """Send a print event email notification to the user who submitted the job.
+
+        Args:
+            event_type: 'user_print_start', 'user_print_complete', 'user_print_failed', or 'user_print_stopped'
+            created_by_id: User ID who submitted the print job (from archive)
+            printer_name: Name of the printer
+            filename: Raw filename or subtask name
+            db: Database session
+        """
+        if created_by_id is None:
+            logger.debug("[EMAIL] Skipping user print email (%s): no created_by_id", event_type)
+            return
+
+        try:
+            # Check if advanced auth is enabled - required for user email notifications
+            from backend.app.models.settings import Settings
+
+            result = await db.execute(select(Settings).where(Settings.key == "advanced_auth_enabled"))
+            setting = result.scalar_one_or_none()
+            if not setting or setting.value.lower() != "true":
+                logger.debug("[EMAIL] Skipping user print email (%s): advanced_auth not enabled", event_type)
+                return
+
+            # Check if user notifications are enabled (admin-controlled toggle)
+            notif_enabled_result = await db.execute(
+                select(Settings).where(Settings.key == "user_notifications_enabled")
+            )
+            notif_enabled_setting = notif_enabled_result.scalar_one_or_none()
+            if notif_enabled_setting and notif_enabled_setting.value.lower() == "false":
+                logger.debug("[EMAIL] Skipping user print email (%s): user_notifications_enabled is false", event_type)
+                return
+
+            # Check SMTP settings are configured - required for sending emails
+            from backend.app.services.email_service import get_smtp_settings, send_user_print_notification
+
+            smtp_settings = await get_smtp_settings(db)
+            if not smtp_settings:
+                logger.debug("[EMAIL] Skipping user print email (%s): SMTP settings not configured", event_type)
+                return
+
+            # Load user preferences
+            from backend.app.models.user import User
+            from backend.app.models.user_email_pref import UserEmailPreference
+
+            user_result = await db.execute(select(User).where(User.id == created_by_id))
+            user = user_result.scalar_one_or_none()
+            if user is None or not user.email:
+                logger.debug(
+                    "[EMAIL] Skipping user print email (%s): user %s not found or has no email address",
+                    event_type,
+                    created_by_id,
+                )
+                return
+
+            # Load user's notification preferences
+            pref_result = await db.execute(
+                select(UserEmailPreference).where(UserEmailPreference.user_id == created_by_id)
+            )
+            pref = pref_result.scalar_one_or_none()
+
+            # Determine if this event type should be sent
+            should_send = False
+            if event_type == "user_print_start":
+                should_send = pref is None or pref.notify_print_start
+            elif event_type == "user_print_complete":
+                should_send = pref is None or pref.notify_print_complete
+            elif event_type == "user_print_failed":
+                should_send = pref is None or pref.notify_print_failed
+            elif event_type == "user_print_stopped":
+                should_send = pref is None or pref.notify_print_stopped
+
+            if not should_send:
+                logger.debug(
+                    "[EMAIL] Skipping user print email (%s): user %s has notifications disabled for this event",
+                    event_type,
+                    created_by_id,
+                )
+                return
+
+            logger.info(
+                "[EMAIL] Sending user print email: event=%s, user=%s (%s), printer=%s, file=%s",
+                event_type,
+                user.username,
+                user.email,
+                printer_name,
+                filename,
+            )
+
+            # Build variables
+            variables = {
+                "printer": printer_name,
+                "filename": self._clean_filename(filename),
+            }
+
+            # Send the email
+            await send_user_print_notification(
+                db=db,
+                event_type=event_type,
+                user_email=user.email,
+                username=user.username,
+                variables=variables,
+            )
+            logger.info("[EMAIL] User print email sent: event=%s → %s", event_type, user.email)
+        except Exception as e:
+            logger.warning("Failed to send user print email notification: %s", e, exc_info=True)
 
     # ==================== Queue Notifications ====================
 

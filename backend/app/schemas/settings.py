@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+import json
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class AppSettings(BaseModel):
@@ -30,6 +32,10 @@ class AppSettings(BaseModel):
     spoolman_report_partial_usage: bool = Field(
         default=True,
         description="Report Partial Usage for Failed Prints. When a print fails or is cancelled, report the estimated filament used up to that point based on layer progress.",
+    )
+    disable_filament_warnings: bool = Field(
+        default=False,
+        description="Disable insufficient filament warnings when printing or queueing prints",
     )
 
     # Updates
@@ -174,6 +180,18 @@ class AppSettings(BaseModel):
         description="Low stock threshold percentage (%) for inventory filtering and display",
     )
 
+    # User email notifications (requires Advanced Authentication)
+    user_notifications_enabled: bool = Field(
+        default=True,
+        description="Enable user email notifications for print job events (requires Advanced Authentication)",
+    )
+
+    # Default sidebar order (admin-set for all users)
+    default_sidebar_order: str = Field(
+        default="",
+        description="JSON object with 'order' key containing array of sidebar item IDs (empty = no default)",
+    )
+
 
 class AppSettingsUpdate(BaseModel):
     """Schema for updating settings (all fields optional)."""
@@ -190,6 +208,7 @@ class AppSettingsUpdate(BaseModel):
     spoolman_sync_mode: str | None = None
     spoolman_disable_weight_sync: bool | None = None
     spoolman_report_partial_usage: bool | None = None
+    disable_filament_warnings: bool | None = None
     check_updates: bool | None = None
     check_printer_firmware: bool | None = None
     include_beta_updates: bool | None = None
@@ -240,3 +259,24 @@ class AppSettingsUpdate(BaseModel):
     prometheus_enabled: bool | None = None
     prometheus_token: str | None = None
     low_stock_threshold: float | None = Field(default=None, ge=0.1, le=99.9)
+    user_notifications_enabled: bool | None = None
+    default_sidebar_order: str | None = None
+
+    @field_validator("default_sidebar_order")
+    @classmethod
+    def validate_default_sidebar_order(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return v
+        try:
+            parsed = json.loads(v)
+        except json.JSONDecodeError:
+            raise ValueError("default_sidebar_order must be valid JSON or empty")
+        if isinstance(parsed, dict):
+            order = parsed.get("order")
+        elif isinstance(parsed, list):
+            order = parsed
+        else:
+            raise ValueError("default_sidebar_order must be a JSON object with 'order' key or a JSON array")
+        if not isinstance(order, list) or not all(isinstance(item, str) for item in order):
+            raise ValueError("sidebar order must be an array of strings")
+        return v

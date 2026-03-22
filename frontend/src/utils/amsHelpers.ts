@@ -130,6 +130,54 @@ export function getGlobalTrayId(
 }
 
 /**
+ * Get fill bar color based on spool fill level.
+ * Matches PrintersPage thresholds and Bambu Lab brand green.
+ */
+export function getFillBarColor(fillLevel: number): string {
+  if (fillLevel > 50) return '#00ae42'; // Green - good
+  if (fillLevel >= 15) return '#f59e0b'; // Amber - warning (<= 50%)
+  return '#ef4444'; // Red - critical (< 15%)
+}
+
+/**
+ * Calculate fill level from Spoolman weight data.
+ * Used as the first source in the Spoolman → Inventory → AMS fill chain.
+ */
+export function getSpoolmanFillLevel(
+  linkedSpool: { remaining_weight: number | null; filament_weight: number | null } | undefined
+): number | null {
+  if (!linkedSpool?.remaining_weight || !linkedSpool?.filament_weight
+      || linkedSpool.filament_weight <= 0) return null;
+  return Math.min(100, Math.round(
+    (linkedSpool.remaining_weight / linkedSpool.filament_weight) * 100
+  ));
+}
+
+function toFixedHex(value: number, width: number): string {
+  const safe = Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+  return safe.toString(16).toUpperCase().padStart(width, '0').slice(-width);
+}
+
+// 32-bit FNV-1a hash -> 8-char hex (stable for alphanumeric serials)
+function hashSerialToHex32(serial: string): string {
+  const input = (serial || '').trim().toUpperCase();
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).toUpperCase().padStart(8, '0');
+}
+
+/**
+ * Generate a stable fallback spool tag for slots without RFID identifiers.
+ * Returns a 16-char hex string derived from the printer serial + slot position.
+ */
+export function getFallbackSpoolTag(printerSerial: string, amsId: number, trayId: number): string {
+  return `${hashSerialToHex32(printerSerial)}${toFixedHex(amsId, 4)}${toFixedHex(trayId, 4)}`;
+}
+
+/**
  * Get minimum datetime for scheduling (now + 1 minute).
  * Returns ISO string format for datetime-local input.
  */

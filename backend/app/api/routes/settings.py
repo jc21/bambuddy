@@ -87,6 +87,7 @@ async def get_settings(
                 "spoolman_enabled",
                 "spoolman_disable_weight_sync",
                 "spoolman_report_partial_usage",
+                "disable_filament_warnings",
                 "check_updates",
                 "check_printer_firmware",
                 "include_beta_updates",
@@ -97,6 +98,7 @@ async def get_settings(
                 "ha_enabled",
                 "per_printer_mapping_expanded",
                 "prometheus_enabled",
+                "user_notifications_enabled",
                 "queue_drying_enabled",
                 "queue_drying_block",
                 "ambient_drying_enabled",
@@ -216,6 +218,20 @@ async def reset_settings(
     await db.commit()
 
     return DEFAULT_SETTINGS
+
+
+@router.get("/default-sidebar-order")
+async def get_default_sidebar_order(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the admin-set default sidebar order.
+
+    Intentionally unauthenticated: non-admin users need to read this value to apply
+    the default sidebar order, but may lack SETTINGS_READ permission.
+    The value is non-sensitive (sidebar item IDs only).
+    """
+    value = await get_setting(db, "default_sidebar_order")
+    return {"default_sidebar_order": value or ""}
 
 
 @router.get("/check-ffmpeg")

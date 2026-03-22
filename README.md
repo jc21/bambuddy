@@ -39,11 +39,11 @@
 
 **Print from anywhere in the world** — Bambuddy's new Proxy Mode acts as a secure relay between your slicer and printer:
 
-- 🔒 **TLS-encrypted control channels** — MQTT and FTP control fully encrypted
+- 🔒 **End-to-end TLS encryption** — FTP, file transfer, and camera are transparently proxied with the printer's real TLS certificate
 - 🛡️ **VPN recommended** — Use Tailscale/WireGuard for full data encryption ([details](https://wiki.bambuddy.cool/features/virtual-printer/))
 - 🌍 **No cloud dependency** — Direct connection through your own Bambuddy server
 - 🔑 **Uses printer's access code** — No additional credentials needed
-- ⚡ **Full-speed printing** — FTP and MQTT protocols proxied transparently
+- ⚡ **Full-speed printing** — Transparent TCP proxy, only MQTT is decrypted for IP rewriting
 
 Perfect for remote print farms, traveling makers, or accessing your home printer from work.
 
@@ -85,13 +85,13 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - External camera support (MJPEG, RTSP, HTTP snapshot, USB/V4L2) with layer-based timelapse
 - **Build plate empty detection** - Auto-pause print if objects detected on plate (multi-reference calibration, ROI adjustment)
 - Fan status monitoring (part cooling, auxiliary, chamber)
-- Printer control (stop, pause, resume, chamber light)
+- Printer control (stop, pause, resume, chamber light, print speed)
 - Resizable printer cards (S/M/L/XL)
 - Skip objects during print
 - AMS slot RFID re-read
 - AMS slot configuration (model-filtered presets, K profiles, color picker, pre-population for configured slots)
 - AMS info card (hover for serial number, firmware version) with custom friendly names that persist across printers
-- **AMS remote drying** — Start, monitor, and stop drying sessions for AMS 2 Pro and AMS-HT directly from the Printers page with filament-based temperature/duration presets; automatic PSU detection and HMS power error reporting
+- **AMS remote drying** — Start, monitor, and stop drying sessions for AMS 2 Pro and AMS-HT directly from the Printers page with filament-based temperature/duration presets, optional spool rotation; automatic PSU detection and HMS power error reporting
 - **Queue auto-drying** — Automatically dry filament between scheduled prints when humidity exceeds threshold; configurable presets per filament type, optional blocking mode
 - **Ambient drying** — Automatically keep filament dry on idle printers based on humidity, regardless of whether prints are queued
 - Configurable drying presets per filament type (temperature & duration for AMS 2 Pro and AMS-HT)
@@ -198,7 +198,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Debug logging toggle with live indicator
 - Live application log viewer with filtering
 - Support bundle generator with comprehensive diagnostics (privacy-filtered)
-- **In-app bug reporting** — Submit bug reports directly from the UI with optional screenshot (upload, paste, or drag & drop), automatic diagnostic log collection (30s debug capture with printer push), and system info. Reports create GitHub issues via a secure relay. Privacy-first: all logs are sanitized and sensitive data (IPs, serials, credentials) is never included.
+- **In-app bug reporting** — Submit bug reports directly from the UI with optional screenshot (upload, paste, or drag & drop), interactive debug log capture (start logging, reproduce at your own pace, stop & submit), and system info. Reports create GitHub issues via a secure relay. Privacy-first: all logs are sanitized and sensitive data (IPs, serials, credentials) is never included.
 
 ### 🔒 Optional Authentication
 - Enable/disable authentication any time
@@ -213,6 +213,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Admin creates users with email — system sends secure random password automatically
 - Users can reset their own password from the login screen (no admin needed)
 - Customizable email templates (welcome email, password reset)
+- **Per-user email notifications** — Users receive email alerts for their own print jobs (start, complete, failed, stopped) with individual toggle controls
 
 </td>
 </tr>

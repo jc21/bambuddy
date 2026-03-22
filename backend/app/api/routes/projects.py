@@ -127,6 +127,7 @@ async def compute_project_stats(
             func.sum(case((ProjectBOMItem.quantity_acquired >= ProjectBOMItem.quantity_needed, 1), else_=0)).label(
                 "completed"
             ),
+            func.coalesce(func.sum(ProjectBOMItem.unit_price * ProjectBOMItem.quantity_needed), 0).label("bom_cost"),
         ).where(ProjectBOMItem.project_id == project_id)
     )
     bom_stats = bom_result.first()
@@ -149,6 +150,7 @@ async def compute_project_stats(
         remaining_parts=remaining_parts,
         bom_total_items=bom_stats.total or 0,
         bom_completed_items=int(bom_stats.completed or 0),
+        bom_cost=round(float(bom_stats.bom_cost or 0), 2),
     )
 
 
@@ -244,6 +246,7 @@ async def list_projects(
                 status=project.status,
                 target_count=project.target_count,
                 target_parts_count=project.target_parts_count,
+                budget=project.budget,
                 created_at=project.created_at,
                 archive_count=archive_count,
                 total_items=total_items,
@@ -346,6 +349,7 @@ async def list_templates(
                 color=project.color,
                 status=project.status,
                 target_count=project.target_count,
+                budget=project.budget,
                 created_at=project.created_at,
                 archive_count=archive_count,
                 queue_count=0,
@@ -561,7 +565,7 @@ async def update_project(
         if data.priority not in ["low", "normal", "high", "urgent"]:
             raise HTTPException(status_code=400, detail="Invalid priority")
         project.priority = data.priority
-    if data.budget is not None:
+    if "budget" in data.model_fields_set:
         project.budget = data.budget
     if data.parent_id is not None:
         # Verify parent exists and prevent circular reference

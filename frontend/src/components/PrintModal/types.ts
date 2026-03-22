@@ -148,12 +148,12 @@ export interface PrinterSelectorProps {
 export interface PlateSelectorProps {
   plates: PlateInfo[];
   isMultiPlate: boolean;
-  selectedPlate: number | null;
-  onSelect: (plateIndex: number) => void;
-  /** Whether "queue all plates" is active */
-  queueAll?: boolean;
-  /** Callback to toggle queue-all mode (only shown in add-to-queue mode) */
-  onQueueAllChange?: (queueAll: boolean) => void;
+  selectedPlates: Set<number>;
+  onToggle: (plateIndex: number) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+  /** Whether multi-select (checkboxes) is enabled — true in add-to-queue mode */
+  multiSelect?: boolean;
 }
 
 /**

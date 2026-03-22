@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { SpoolBuddyOutletContext } from '../../components/spoolbuddy/SpoolBuddyLayout';
-import { spoolbuddyApi, type SpoolBuddyDevice, type DaemonUpdateCheck } from '../../api/client';
+import { spoolbuddyApi, type SpoolBuddyDevice } from '../../api/client';
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
@@ -502,44 +502,29 @@ function ScaleTab({ device, weight, weightStable, rawAdc }: {
 
 function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
   const { t } = useTranslation();
-  const [checking, setChecking] = useState(false);
-  const [updateResult, setUpdateResult] = useState<DaemonUpdateCheck | null>(null);
+  const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [includeBeta, setIncludeBeta] = useState(() => {
-    try {
-      return localStorage.getItem('spoolbuddy-include-beta') === 'true';
-    } catch {
-      return false;
-    }
+
+  const isUpdating = device.update_status === 'pending' || device.update_status === 'updating';
+
+  const { data: updateResult, isLoading: checking, refetch } = useQuery({
+    queryKey: ['spoolbuddy-update-check', device.device_id],
+    queryFn: () => spoolbuddyApi.checkDaemonUpdate(device.device_id, true),
+    staleTime: 4 * 60 * 1000,
   });
 
-  const toggleBeta = () => {
-    const next = !includeBeta;
-    setIncludeBeta(next);
-    try {
-      localStorage.setItem('spoolbuddy-include-beta', String(next));
-    } catch {
-      // localStorage unavailable
-    }
-    setUpdateResult(null);
-    setError(null);
-  };
-
-  const checkForUpdates = async () => {
-    setChecking(true);
-    setUpdateResult(null);
+  const applyUpdate = async () => {
+    setApplying(true);
     setError(null);
     try {
-      const result = await spoolbuddyApi.checkDaemonUpdate(device.device_id, includeBeta);
-      setUpdateResult(result);
+      await spoolbuddyApi.triggerUpdate(device.device_id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to check for updates');
+      setError(e instanceof Error ? e.message : 'Failed to trigger update');
     } finally {
-      setChecking(false);
+      setApplying(false);
     }
   };
 
-  // Show version from device, or from update check result if available
   const displayVersion = device.firmware_version
     || (updateResult?.current_version && updateResult.current_version !== '0.0.0' ? updateResult.current_version : null);
 
@@ -560,11 +545,50 @@ function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
         </div>
       </div>
 
+      {/* Update progress (shown when update is in progress) */}
+      {isUpdating && (
+        <div className="bg-zinc-800 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 animate-spin text-green-400 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-green-300">
+                {t('spoolbuddy.settings.updating', 'Updating...')}
+              </p>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                {device.update_message || t('spoolbuddy.settings.updateWaiting', 'Waiting for device...')}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update complete */}
+      {device.update_status === 'complete' && (
+        <div className="rounded-lg p-3 text-sm bg-green-900/30 border border-green-800">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-green-300">{device.update_message || t('spoolbuddy.settings.updateComplete', 'Update complete!')}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Update error */}
+      {device.update_status === 'error' && (
+        <div className="rounded-lg p-3 text-sm bg-red-900/30 border border-red-800">
+          <p className="text-red-300">{device.update_message || t('spoolbuddy.settings.updateFailed', 'Update failed')}</p>
+        </div>
+      )}
+
       {/* Check for updates */}
       <div className="bg-zinc-800 rounded-lg p-4 space-y-3">
         <button
-          onClick={checkForUpdates}
-          disabled={checking}
+          onClick={() => refetch()}
+          disabled={checking || isUpdating}
           className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-zinc-700 text-zinc-200 hover:bg-zinc-600 disabled:opacity-40 transition-colors min-h-[44px] flex items-center justify-center gap-2"
         >
           {checking && (
@@ -591,13 +615,30 @@ function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
               : 'bg-zinc-700/50'
           }`}>
             {updateResult.update_available ? (
-              <div className="space-y-1">
-                <p className="text-green-300 font-medium">
-                  {t('spoolbuddy.settings.updateAvailable', 'Update available')}: v{updateResult.latest_version}
-                </p>
-                <p className="text-xs text-zinc-400">
-                  {t('spoolbuddy.settings.updateInstructions', 'Update via SSH: run the SpoolBuddy install script to upgrade.')}
-                </p>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <p className="text-green-300 font-medium">
+                    {t('spoolbuddy.settings.updateAvailable', 'Update available')}: v{updateResult.latest_version}
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    {displayVersion ? `${displayVersion} → ${updateResult.latest_version}` : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={applyUpdate}
+                  disabled={applying || isUpdating || !device.online}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-green-600 text-white hover:bg-green-700 disabled:opacity-40 transition-colors min-h-[44px] flex items-center justify-center gap-2"
+                >
+                  {applying && (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  )}
+                  {!device.online
+                    ? t('spoolbuddy.settings.deviceOffline', 'Device Offline')
+                    : t('spoolbuddy.settings.applyUpdate', 'Apply Update')}
+                </button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -610,20 +651,6 @@ function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
           </div>
         )}
 
-        {/* Include beta toggle */}
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-xs text-zinc-500">{t('spoolbuddy.settings.includeBeta', 'Include beta versions')}</span>
-          <button
-            onClick={toggleBeta}
-            className={`relative w-10 h-5 rounded-full transition-colors ${
-              includeBeta ? 'bg-green-600' : 'bg-zinc-600'
-            }`}
-          >
-            <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-              includeBeta ? 'translate-x-5' : 'translate-x-0.5'
-            }`} />
-          </button>
-        </div>
       </div>
     </div>
   );

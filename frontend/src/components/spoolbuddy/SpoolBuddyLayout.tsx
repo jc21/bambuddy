@@ -58,14 +58,25 @@ export function SpoolBuddyLayout() {
     };
   }, []);
 
-  // Update alert based on device state
+  // Auto-check for SpoolBuddy daemon updates
+  const { data: updateCheck } = useQuery({
+    queryKey: ['spoolbuddy-update-check', device?.device_id],
+    queryFn: () => device ? spoolbuddyApi.checkDaemonUpdate(device.device_id, true) : Promise.resolve(null),
+    enabled: !!device,
+    refetchInterval: 5 * 60 * 1000, // re-check every 5 minutes
+    staleTime: 4 * 60 * 1000,
+  });
+
+  // Update alert based on device state and available updates
   useEffect(() => {
     if (!sbState.deviceOnline) {
       setAlert({ type: 'warning', message: 'SpoolBuddy device disconnected' });
+    } else if (updateCheck?.update_available && updateCheck.latest_version) {
+      setAlert({ type: 'info', message: `Update available: v${updateCheck.latest_version}` });
     } else {
       setAlert(null);
     }
-  }, [sbState.deviceOnline]);
+  }, [sbState.deviceOnline, updateCheck]);
 
   // Track user activity for screen blank
   const resetActivity = useCallback(() => {

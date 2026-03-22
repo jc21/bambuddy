@@ -46,12 +46,13 @@ import {
   Info,
   Cable,
   Flame,
+  Gauge,
 } from 'lucide-react';
 
 import { useNavigate } from 'react-router-dom';
 import { api, discoveryApi, firmwareApi } from '../api/client';
 import { formatDateOnly, formatETA, formatDuration, parseUTCDate } from '../utils/date';
-import type { Printer, PrinterCreate, AMSUnit, DiscoveredPrinter, FirmwareUpdateInfo, FirmwareUploadStatus, LinkedSpoolInfo, SpoolAssignment } from '../api/client';
+import type { Printer, PrinterCreate, AMSUnit, DiscoveredPrinter, FirmwareUpdateInfo, FirmwareUploadStatus, LinkedSpoolInfo, SpoolAssignment, HMSError } from '../api/client';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -71,7 +72,7 @@ import { SkipObjectsModal, SkipObjectsIcon } from '../components/SkipObjectsModa
 import { FileUploadModal } from '../components/FileUploadModal';
 import { PrintModal } from '../components/PrintModal';
 import { PrinterInfoModal } from '../components/PrinterInfoModal';
-import { getGlobalTrayId } from '../utils/amsHelpers';
+import { getGlobalTrayId, getFillBarColor, getSpoolmanFillLevel, getFallbackSpoolTag } from '../utils/amsHelpers';
 import { getPrinterImage, getWifiStrength, filterCompatibleQueueItems } from '../utils/printer';
 import { FilamentSlotCircle } from '../components/FilamentSlotCircle';
 import { hexToColorName, parseFilamentColor, isLightColor } from '../utils/colors';
@@ -998,23 +999,6 @@ function getAmsLabel(amsId: number | string, trayCount: number): string {
   return isHt ? `HT-${letter}` : `AMS-${letter}`;
 }
 
-// Get fill bar color based on spool fill level
-function getFillBarColor(fillLevel: number): string {
-  if (fillLevel > 50) return '#00ae42'; // Green - good
-  if (fillLevel >= 15) return '#f59e0b'; // Amber - warning (<= 50%)
-  return '#ef4444'; // Red - critical (< 15%)
-}
-
-// Calculate fill level from Spoolman weight data (used as fallback when AMS reports 0%)
-function getSpoolmanFillLevel(
-  linkedSpool: LinkedSpoolInfo | undefined
-): number | null {
-  if (!linkedSpool?.remaining_weight || !linkedSpool?.filament_weight
-      || linkedSpool.filament_weight <= 0) return null;
-  return Math.min(100, Math.round(
-    (linkedSpool.remaining_weight / linkedSpool.filament_weight) * 100
-  ));
-}
 
 /**
  * Check if a tray contains a Bambu Lab spool (RFID-tagged).
@@ -1041,26 +1025,6 @@ function isBambuLabSpool(tray: {
   return false;
 }
 
-function toFixedHex(value: number, width: number): string {
-  const safe = Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
-  return safe.toString(16).toUpperCase().padStart(width, '0').slice(-width);
-}
-
-// 32-bit FNV-1a hash -> 8-char hex (stable for alphanumeric serials)
-function hashSerialToHex32(serial: string): string {
-  const input = (serial || '').trim().toUpperCase();
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).toUpperCase().padStart(8, '0');
-}
-
-function getFallbackSpoolTag(printerSerial: string, amsId: number, trayId: number): string {
-  // 16-char stable hex tag for slots without RFID identifiers
-  return `${hashSerialToHex32(printerSerial)}${toFixedHex(amsId, 4)}${toFixedHex(trayId, 4)}`;
-}
 
 function CoverImage({ url, printName }: { url: string | null; printName?: string }) {
   const { t } = useTranslation();
@@ -1159,33 +1123,40 @@ function StatusSummaryBar({ printers }: { printers: Printer[] | undefined }) {
     let idle = 0;
     let offline = 0;
     let loading = 0;
+    let problem = 0;
     let nextPrinterName: string | null = null;
     let nextRemainingMin: number | null = null;
     let nextProgress: number = 0;
 
     printers?.forEach((printer) => {
-      const status = queryClient.getQueryData<{ connected: boolean; state: string | null; remaining_time: number | null; progress: number | null }>(['printerStatus', printer.id]);
+      const status = queryClient.getQueryData<{ connected: boolean; state: string | null; remaining_time: number | null; progress: number | null; hms_errors?: HMSError[] }>(['printerStatus', printer.id]);
       if (status === undefined) {
         // Status not yet loaded - don't count as offline yet
         loading++;
       } else if (!status.connected) {
         offline++;
-      } else if (status.state === 'RUNNING') {
-        printing++;
-        if (status.remaining_time != null && status.remaining_time > 0) {
-          if (nextRemainingMin === null || status.remaining_time < nextRemainingMin) {
-            nextRemainingMin = status.remaining_time;
-            nextPrinterName = printer.name;
-            nextProgress = status.progress || 0;
-          }
-        }
       } else {
-        idle++;
+        // Count printers with HMS errors
+        if (status.hms_errors && filterKnownHMSErrors(status.hms_errors).length > 0) {
+          problem++;
+        }
+        if (status.state === 'RUNNING') {
+          printing++;
+          if (status.remaining_time != null && status.remaining_time > 0) {
+            if (nextRemainingMin === null || status.remaining_time < nextRemainingMin) {
+              nextRemainingMin = status.remaining_time;
+              nextPrinterName = printer.name;
+              nextProgress = status.progress || 0;
+            }
+          }
+        } else {
+          idle++;
+        }
       }
     });
 
     return {
-      counts: { printing, idle, offline, loading, total: (printers?.length || 0) },
+      counts: { printing, idle, offline, loading, problem, total: (printers?.length || 0) },
       nextFinish: nextPrinterName && nextRemainingMin ? { name: nextPrinterName, remainingMin: nextRemainingMin, progress: nextProgress } : null,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1214,6 +1185,14 @@ function StatusSummaryBar({ printers }: { printers: Printer[] | undefined }) {
           <div className="w-2 h-2 rounded-full bg-gray-400" />
           <span className="text-bambu-gray">
             <span className="text-white font-medium">{counts.offline}</span> {t('printers.status.offline').toLowerCase()}
+          </span>
+        </div>
+      )}
+      {counts.problem > 0 && (
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-status-error" />
+          <span className="text-bambu-gray">
+            <span className="text-white font-medium">{counts.problem}</span> {t('printers.status.problem').toLowerCase()}
           </span>
         </div>
       )}
@@ -1530,6 +1509,7 @@ function PrinterCard({
   spoolmanEnabled = false,
   linkedSpools,
   spoolmanUrl,
+  spoolmanSyncMode,
   onGetAssignment,
   onUnassignSpool,
   timeFormat = 'system',
@@ -1553,6 +1533,7 @@ function PrinterCard({
   hasUnlinkedSpools?: boolean;
   linkedSpools?: Record<string, LinkedSpoolInfo>;
   spoolmanUrl?: string | null;
+  spoolmanSyncMode?: string | null;
   spoolAssignments?: SpoolAssignment[];
   onGetAssignment?: (printerId: number, amsId: number, trayId: number) => SpoolAssignment | undefined;
   onUnassignSpool?: (printerId: number, amsId: number, trayId: number) => void;
@@ -1578,6 +1559,7 @@ function PrinterCard({
   const [showHMSModal, setShowHMSModal] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
+  const [showSpeedMenu, setShowSpeedMenu] = useState<number | null>(null);
   const [showResumeConfirm, setShowResumeConfirm] = useState(false);
   const [showSkipObjectsModal, setShowSkipObjectsModal] = useState(false);
   const [showUploadForPrint, setShowUploadForPrint] = useState(false);
@@ -1590,6 +1572,7 @@ function PrinterCard({
   const [dryingFilament, setDryingFilament] = useState('PLA');
   const [dryingTemp, setDryingTemp] = useState(50);
   const [dryingDuration, setDryingDuration] = useState(4);
+  const [dryingRotateTray, setDryingRotateTray] = useState(false);
   const [dryingPopoverPos, setDryingPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isDropUploading, setIsDropUploading] = useState(false);
@@ -1610,7 +1593,7 @@ function PrinterCard({
     printerId: number;
     amsId: number;
     trayId: number;
-    trayInfo: { type: string; color: string; location: string };
+    trayInfo: { type: string; color: string; location: string; material?: string; profile?: string };
   } | null>(null);
   const [configureSlotModal, setConfigureSlotModal] = useState<{
     amsId: number;
@@ -1890,8 +1873,8 @@ function PrinterCard({
 
   // AMS drying mutations
   const startDryingMutation = useMutation({
-    mutationFn: ({ amsId, temp, duration, filament }: { amsId: number; temp: number; duration: number; filament: string }) =>
-      api.startDrying(printer.id, amsId, temp, duration, filament),
+    mutationFn: ({ amsId, temp, duration, filament, rotateTray }: { amsId: number; temp: number; duration: number; filament: string; rotateTray: boolean }) =>
+      api.startDrying(printer.id, amsId, temp, duration, filament, rotateTray),
     onSuccess: () => {
       setDryingPopoverAmsId(null);
       queryClient.invalidateQueries({ queryKey: ['printerStatus', printer.id] });
@@ -1987,6 +1970,26 @@ function PrinterCard({
         queryClient.setQueryData(['printerStatus', printer.id], context.previousStatus);
       }
       showToast(error.message || t('printers.toast.failedToControlChamberLight'), 'error');
+    },
+  });
+
+  // Print speed mutation with optimistic update
+  const printSpeedMutation = useMutation({
+    mutationFn: (mode: number) => api.setPrintSpeed(printer.id, mode),
+    onMutate: async (mode) => {
+      await queryClient.cancelQueries({ queryKey: ['printerStatus', printer.id] });
+      const previousStatus = queryClient.getQueryData(['printerStatus', printer.id]);
+      queryClient.setQueryData(['printerStatus', printer.id], (old: typeof status) => ({
+        ...old,
+        speed_level: mode,
+      }));
+      return { previousStatus };
+    },
+    onError: (error: Error, _, context) => {
+      if (context?.previousStatus) {
+        queryClient.setQueryData(['printerStatus', printer.id], context.previousStatus);
+      }
+      showToast(error.message || t('printers.toast.failedToSetSpeed'), 'error');
     },
   });
 
@@ -2390,14 +2393,29 @@ function PrinterCard({
                 <div className="flex items-center gap-2">
                   <h3 className={`font-semibold text-white ${getTitleSize()}`}>{printer.name}</h3>
                   {/* Connection indicator dot for compact mode */}
-                  {viewMode === 'compact' && (
-                    <div
-                      className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        status?.connected ? 'bg-status-ok' : 'bg-status-error'
-                      }`}
-                      title={status?.connected ? t('printers.connection.connected') : t('printers.connection.offline')}
-                    />
-                  )}
+                  {viewMode === 'compact' && (() => {
+                    const hmsErrors = status?.connected && status.hms_errors ? filterKnownHMSErrors(status.hms_errors) : [];
+                    const hasSevere = hmsErrors.some(e => e.severity <= 2);
+                    const hasWarning = hmsErrors.length > 0;
+                    const pipColor = !status?.connected
+                      ? 'bg-status-error'
+                      : hasSevere
+                        ? 'bg-status-error'
+                        : hasWarning
+                          ? 'bg-status-warning'
+                          : 'bg-status-ok';
+                    const pipTitle = !status?.connected
+                      ? t('printers.connection.offline')
+                      : hasWarning
+                        ? `${hmsErrors.length} HMS ${hmsErrors.length === 1 ? 'error' : 'errors'}`
+                        : t('printers.connection.connected');
+                    return (
+                      <div
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${pipColor}`}
+                        title={pipTitle}
+                      />
+                    );
+                  })()}
                 </div>
                 <p className="text-sm text-bambu-gray">
                   {printer.model || 'Unknown Model'}
@@ -2695,7 +2713,7 @@ function PrinterCard({
                   <div className="flex items-center gap-2">
                     <div className="flex-1 bg-bambu-dark-tertiary rounded-full h-1.5">
                       <div
-                        className="bg-bambu-green h-1.5 rounded-full transition-all"
+                        className={`${status.state === 'PAUSE' ? 'bg-status-warning' : 'bg-bambu-green'} h-1.5 rounded-full transition-all`}
                         style={{ width: `${status.progress || 0}%` }}
                       />
                     </div>
@@ -2754,7 +2772,7 @@ function PrinterCard({
                           <div className="flex items-center justify-between text-sm">
                             <div className="flex-1 bg-bambu-dark-tertiary rounded-full h-2 mr-3">
                               <div
-                                className="bg-bambu-green h-2 rounded-full transition-all"
+                                className={`${status.state === 'PAUSE' ? 'bg-status-warning' : 'bg-bambu-green'} h-2 rounded-full transition-all`}
                                 style={{ width: `${status.progress || 0}%` }}
                               />
                             </div>
@@ -2972,6 +2990,66 @@ function PrinterCard({
                         </span>
                       </div>
 
+                      {/* Separator */}
+                      <div className="w-px h-5 bg-bambu-gray/30" />
+
+                      {/* Print Speed */}
+                      {(() => {
+                        const speedLabels: Record<number, string> = { 1: '50%', 2: '100%', 3: '124%', 4: '166%' };
+                        const speedPct = speedLabels[status.speed_level] || '100%';
+                        return (
+                          <div className="relative">
+                            <button
+                              onClick={() => setShowSpeedMenu(showSpeedMenu === printer.id ? null : printer.id)}
+                              disabled={!isPrinting || !hasPermission('printers:control')}
+                              className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors ${
+                                isPrinting
+                                  ? 'bg-amber-500/10 hover:bg-amber-500/20'
+                                  : 'bg-bambu-dark cursor-not-allowed'
+                              }`}
+                              title={isPrinting ? t('printers.speed.title') : undefined}
+                            >
+                              <Gauge className={`w-3.5 h-3.5 ${
+                                isPrinting ? 'text-amber-400' : 'text-bambu-gray/50'
+                              }`} />
+                              <span className={`text-[10px] ${
+                                isPrinting ? 'text-amber-400' : 'text-bambu-gray/50'
+                              }`}>
+                                {speedPct}
+                              </span>
+                            </button>
+                            {showSpeedMenu === printer.id && (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setShowSpeedMenu(null)} />
+                                <div className="absolute bottom-full left-0 mb-1 z-50 bg-bambu-dark-secondary border border-bambu-dark-tertiary rounded-lg shadow-lg py-1 min-w-[130px]">
+                                  {([
+                                    { mode: 1, label: t('printers.speed.silent') },
+                                    { mode: 2, label: t('printers.speed.standard') },
+                                    { mode: 3, label: t('printers.speed.sport') },
+                                    { mode: 4, label: t('printers.speed.ludicrous') },
+                                  ] as const).map(({ mode, label }) => (
+                                    <button
+                                      key={mode}
+                                      onClick={() => {
+                                        printSpeedMutation.mutate(mode);
+                                        setShowSpeedMenu(null);
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                                        status.speed_level === mode
+                                          ? 'text-bambu-green bg-bambu-green/10'
+                                          : 'text-white hover:bg-bambu-dark-tertiary'
+                                      }`}
+                                    >
+                                      {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                     </div>
 
                     {/* Right: Print Control Buttons */}
@@ -3115,6 +3193,7 @@ function PrinterCard({
                                           setDryingFilament(filType);
                                           setDryingTemp(preset[moduleType] || preset.n3f);
                                           setDryingDuration(moduleType === 'n3s' ? preset.n3s_hours : preset.n3f_hours);
+                                          setDryingRotateTray(false);
                                           setDryingPopoverModuleType(ams.module_type);
                                           setDryingPopoverAmsId(ams.id);
                                           const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -3176,7 +3255,7 @@ function PrinterCard({
                                 const slotPreset = slotPresets?.[globalTrayId];
 
                                 // Fill level fallback chain: Spoolman → Inventory → AMS remain
-                                const trayTag = (tray?.tag_uid || tray?.tray_uuid || getFallbackSpoolTag(printer.serial_number, ams.id, slotIdx))?.toUpperCase();
+                                const trayTag = (tray?.tray_uuid || tray?.tag_uid || getFallbackSpoolTag(printer.serial_number, ams.id, slotIdx))?.toUpperCase();
                                 const linkedSpool = trayTag ? linkedSpools?.[trayTag] : undefined;
                                 const spoolmanFill = getSpoolmanFillLevel(linkedSpool);
                                 const inventoryAssignment = onGetAssignment?.(printer.id, ams.id, slotIdx);
@@ -3303,6 +3382,7 @@ function PrinterCard({
                                             ? linkedSpools?.[trayTag]?.id
                                             : undefined,
                                           spoolmanUrl,
+                                          syncMode: spoolmanSyncMode,
                                           onLinkSpool: spoolmanEnabled ? () => {
                                             const linkTag = (filamentData.trayUuid || filamentData.tagUid || getFallbackSpoolTag(printer.serial_number, ams.id, slotIdx)).toUpperCase();
                                             setLinkSpoolModal({
@@ -3330,7 +3410,9 @@ function PrinterCard({
                                               amsId: ams.id,
                                               trayId: slotIdx,
                                               trayInfo: {
-                                                type: filamentData.profile,
+                                                type: tray?.tray_type || filamentData.profile,
+                                                material: tray?.tray_type ?? undefined,
+                                                profile: filamentData.profile,
                                                 color: filamentData.colorHex || '',
                                                 location: `${getAmsLabel(ams.id, ams.tray.length)} Slot ${slotIdx + 1}`,
                                               },
@@ -3520,6 +3602,7 @@ function PrinterCard({
                                         setDryingFilament(filType);
                                         setDryingTemp(preset[moduleType] || preset.n3f);
                                         setDryingDuration(moduleType === 'n3s' ? preset.n3s_hours : preset.n3f_hours);
+                                        setDryingRotateTray(false);
                                         setDryingPopoverModuleType(ams.module_type);
                                         setDryingPopoverAmsId(ams.id);
                                         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -3617,6 +3700,7 @@ function PrinterCard({
                                         ? linkedSpools?.[htTrayTag]?.id
                                         : undefined,
                                       spoolmanUrl,
+                                      syncMode: spoolmanSyncMode,
                                       onLinkSpool: spoolmanEnabled ? () => {
                                         const linkTag = (filamentData.trayUuid || filamentData.tagUid || getFallbackSpoolTag(printer.serial_number, ams.id, htSlotId)).toUpperCase();
                                         setLinkSpoolModal({
@@ -3644,7 +3728,9 @@ function PrinterCard({
                                           amsId: ams.id,
                                           trayId: htSlotId,
                                           trayInfo: {
-                                            type: filamentData.profile,
+                                            type: tray?.tray_type || filamentData.profile,
+                                            material: tray?.tray_type ?? undefined,
+                                            profile: filamentData.profile,
                                             color: filamentData.colorHex || '',
                                             location: getAmsLabel(ams.id, ams.tray.length),
                                           },
@@ -3828,6 +3914,7 @@ function PrinterCard({
                                           ? linkedSpools?.[extTrayTag]?.id
                                           : undefined,
                                         spoolmanUrl,
+                                        syncMode: spoolmanSyncMode,
                                         onLinkSpool: spoolmanEnabled ? () => {
                                           const linkTag = (extFilamentData.trayUuid || extFilamentData.tagUid || getFallbackSpoolTag(printer.serial_number, 255, slotTrayId)).toUpperCase();
                                           setLinkSpoolModal({
@@ -3855,7 +3942,9 @@ function PrinterCard({
                                             amsId: 255,
                                             trayId: slotTrayId,
                                             trayInfo: {
-                                              type: extFilamentData.profile,
+                                              type: extTray.tray_type || extFilamentData.profile,
+                                              material: extTray.tray_type ?? undefined,
+                                              profile: extFilamentData.profile,
                                               color: extFilamentData.colorHex || '',
                                               location: extLabel || t('printers.external'),
                                             },
@@ -4748,13 +4837,23 @@ function PrinterCard({
                     <span>24h</span>
                   </div>
                 </div>
+                {/* Rotate tray */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dryingRotateTray}
+                    onChange={e => setDryingRotateTray(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer"
+                  />
+                  <span className="text-[11px] text-bambu-gray">{t('printers.drying.rotateTray')}</span>
+                </label>
               </div>
               {/* Footer */}
               <div className="px-3 pb-3">
                 <button
                   onClick={() => {
                     if (dryingPopoverAmsId !== null) {
-                      startDryingMutation.mutate({ amsId: dryingPopoverAmsId, temp: dryingTemp, duration: dryingDuration, filament: dryingFilament });
+                      startDryingMutation.mutate({ amsId: dryingPopoverAmsId, temp: dryingTemp, duration: dryingDuration, filament: dryingFilament, rotateTray: dryingRotateTray });
                     }
                   }}
                   disabled={startDryingMutation.isPending}
@@ -5709,6 +5808,15 @@ export function PrintersPage() {
   });
   const spoolmanEnabled = spoolmanStatus?.enabled && spoolmanStatus?.connected;
 
+  // Fetch Spoolman settings to get sync mode
+  const { data: spoolmanSettings } = useQuery({
+    queryKey: ['spoolman-settings'],
+    queryFn: api.getSpoolmanSettings,
+    enabled: !!spoolmanEnabled,
+    staleTime: 60 * 1000, // 1 minute
+  });
+  const spoolmanSyncMode = spoolmanSettings?.spoolman_sync_mode;
+
   // Fetch unlinked spools to know if link button should be enabled
   const { data: unlinkedSpools } = useQuery({
     queryKey: ['unlinked-spools'],
@@ -5848,15 +5956,17 @@ export function PrintersPage() {
         });
         break;
       case 'status':
-        // Sort by status: printing > idle > offline
+        // Sort by status: HMS errors > printing > idle > offline
         sorted.sort((a, b) => {
-          const statusA = queryClient.getQueryData<{ connected: boolean; state: string | null }>(['printerStatus', a.id]);
-          const statusB = queryClient.getQueryData<{ connected: boolean; state: string | null }>(['printerStatus', b.id]);
+          const statusA = queryClient.getQueryData<{ connected: boolean; state: string | null; hms_errors?: HMSError[] }>(['printerStatus', a.id]);
+          const statusB = queryClient.getQueryData<{ connected: boolean; state: string | null; hms_errors?: HMSError[] }>(['printerStatus', b.id]);
 
           const getPriority = (s: typeof statusA) => {
-            if (!s?.connected) return 2; // offline
-            if (s.state === 'RUNNING') return 0; // printing
-            return 1; // idle
+            if (!s?.connected) return 3; // offline
+            const hmsErrors = s.hms_errors ? filterKnownHMSErrors(s.hms_errors) : [];
+            if (hmsErrors.length > 0) return 0; // HMS errors - top priority
+            if (s.state === 'RUNNING') return 1; // printing
+            return 2; // idle
           };
 
           return getPriority(statusA) - getPriority(statusB);
@@ -6058,6 +6168,7 @@ export function PrintersPage() {
                     hasUnlinkedSpools={hasUnlinkedSpools}
                     linkedSpools={linkedSpools}
                     spoolmanUrl={spoolmanStatus?.url}
+                    spoolmanSyncMode={spoolmanSyncMode}
                     onGetAssignment={getAssignment}
                     onUnassignSpool={(pid, aid, tid) => unassignMutation.mutate({ printerId: pid, amsId: aid, trayId: tid })}
                     timeFormat={settings?.time_format || 'system'}
@@ -6086,6 +6197,7 @@ export function PrintersPage() {
               hasUnlinkedSpools={hasUnlinkedSpools}
               linkedSpools={linkedSpools}
               spoolmanUrl={spoolmanStatus?.url}
+              spoolmanSyncMode={spoolmanSyncMode}
               onGetAssignment={getAssignment}
               onUnassignSpool={(pid, aid, tid) => unassignMutation.mutate({ printerId: pid, amsId: aid, trayId: tid })}
               amsThresholds={settings ? {

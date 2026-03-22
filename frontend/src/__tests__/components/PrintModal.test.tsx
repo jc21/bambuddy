@@ -713,7 +713,7 @@ describe('PrintModal', () => {
     });
   });
 
-  describe('queue all plates', () => {
+  describe('multi-plate selection', () => {
     const multiPlateResponse = {
       is_multi_plate: true,
       plates: [
@@ -731,7 +731,7 @@ describe('PrintModal', () => {
       );
     });
 
-    it('shows "Queue All" button only in add-to-queue mode', async () => {
+    it('shows "Select All" button only in add-to-queue mode', async () => {
       render(
         <PrintModal
           mode="add-to-queue"
@@ -742,11 +742,11 @@ describe('PrintModal', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Queue All 3 Plates')).toBeInTheDocument();
+        expect(screen.getByText('Select All 3 Plates')).toBeInTheDocument();
       });
     });
 
-    it('does not show "Queue All" button in reprint mode', async () => {
+    it('does not show "Select All" button in reprint mode', async () => {
       render(
         <PrintModal
           mode="reprint"
@@ -760,10 +760,10 @@ describe('PrintModal', () => {
       await waitFor(() => {
         expect(screen.getByText('Plate 1')).toBeInTheDocument();
       });
-      expect(screen.queryByText('Queue All 3 Plates')).not.toBeInTheDocument();
+      expect(screen.queryByText('Select All 3 Plates')).not.toBeInTheDocument();
     });
 
-    it('highlights all plates when "Queue All" is clicked', async () => {
+    it('selects all plates when "Select All" is clicked', async () => {
       const user = userEvent.setup();
       render(
         <PrintModal
@@ -775,19 +775,20 @@ describe('PrintModal', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Queue All 3 Plates')).toBeInTheDocument();
+        expect(screen.getByText('Select All 3 Plates')).toBeInTheDocument();
       });
 
-      await user.click(screen.getByText('Queue All 3 Plates'));
+      await user.click(screen.getByText('Select All 3 Plates'));
 
-      // All plates should show check marks
+      // All plates should be highlighted (green border)
       await waitFor(() => {
-        const checks = document.querySelectorAll('.text-bambu-green.flex-shrink-0');
-        expect(checks.length).toBe(3);
+        const plateButtons = document.querySelectorAll('button[type="button"].border-bambu-green');
+        // 3 plate buttons + the "Deselect All" toggle button = 4 green-bordered buttons
+        expect(plateButtons.length).toBeGreaterThanOrEqual(3);
       });
     });
 
-    it('creates one queue item per plate when submitting with queue-all', async () => {
+    it('allows selecting a subset of plates to queue', async () => {
       const queueRequests: unknown[] = [];
       server.use(
         http.post('/api/v1/queue/', async ({ request }) => {
@@ -810,15 +811,60 @@ describe('PrintModal', () => {
 
       // Wait for plates and select a printer
       await waitFor(() => {
-        expect(screen.getByText('Queue All 3 Plates')).toBeInTheDocument();
+        expect(screen.getByText('Select All 3 Plates')).toBeInTheDocument();
         expect(screen.getByText('X1 Carbon')).toBeInTheDocument();
       });
 
       // Select printer
       await user.click(screen.getByText('X1 Carbon'));
 
-      // Click queue all
-      await user.click(screen.getByText('Queue All 3 Plates'));
+      // Plate 1 is auto-selected. Click Plate 3 to add it (multi-select in add-to-queue mode)
+      await user.click(screen.getByText('Plate 3'));
+
+      // Submit — should queue plates 1 and 3
+      const submitButton = document.querySelector('button[type="submit"]') as HTMLElement;
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(queueRequests.length).toBe(2);
+      });
+
+      expect((queueRequests[0] as { plate_id: number }).plate_id).toBe(1);
+      expect((queueRequests[1] as { plate_id: number }).plate_id).toBe(3);
+    });
+
+    it('creates one queue item per plate when submitting with select-all', async () => {
+      const queueRequests: unknown[] = [];
+      server.use(
+        http.post('/api/v1/queue/', async ({ request }) => {
+          const body = await request.json();
+          queueRequests.push(body);
+          return HttpResponse.json({ id: queueRequests.length, status: 'pending' });
+        }),
+      );
+
+      const user = userEvent.setup();
+      render(
+        <PrintModal
+          mode="add-to-queue"
+          archiveId={1}
+          archiveName="MultiPlate.3mf"
+          onClose={mockOnClose}
+          onSuccess={mockOnSuccess}
+        />
+      );
+
+      // Wait for plates and select a printer
+      await waitFor(() => {
+        expect(screen.getByText('Select All 3 Plates')).toBeInTheDocument();
+        expect(screen.getByText('X1 Carbon')).toBeInTheDocument();
+      });
+
+      // Select printer
+      await user.click(screen.getByText('X1 Carbon'));
+
+      // Click select all
+      await user.click(screen.getByText('Select All 3 Plates'));
 
       // Find the submit button (type="submit") — distinct from the toggle button (type="button")
       const submitButton = document.querySelector('button[type="submit"]') as HTMLElement;

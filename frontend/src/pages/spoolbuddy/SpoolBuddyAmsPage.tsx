@@ -6,6 +6,7 @@ import { Layers } from 'lucide-react';
 import type { SpoolBuddyOutletContext } from '../../components/spoolbuddy/SpoolBuddyLayout';
 import { api } from '../../api/client';
 import type { PrinterStatus, AMSTray } from '../../api/client';
+import { getGlobalTrayId, getFillBarColor, getSpoolmanFillLevel, getFallbackSpoolTag } from '../../utils/amsHelpers';
 import { AmsUnitCard, HumidityIndicator, TemperatureIndicator, NozzleBadge } from '../../components/spoolbuddy/AmsUnitCard';
 import type { AmsThresholds } from '../../components/spoolbuddy/AmsUnitCard';
 import { ConfigureAmsSlotModal } from '../../components/ConfigureAmsSlotModal';
@@ -70,6 +71,23 @@ export function SpoolBuddyAmsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Fetch Spoolman status to enable fill-level chain
+  const { data: spoolmanStatus } = useQuery({
+    queryKey: ['spoolman-status'],
+    queryFn: api.getSpoolmanStatus,
+    staleTime: 60 * 1000,
+  });
+  const spoolmanEnabled = spoolmanStatus?.enabled && spoolmanStatus?.connected;
+
+  // Fetch linked spools map (tag -> spool info) for Spoolman fill levels
+  const { data: linkedSpoolsData } = useQuery({
+    queryKey: ['linked-spools'],
+    queryFn: api.getLinkedSpools,
+    enabled: !!spoolmanEnabled,
+    staleTime: 30 * 1000,
+  });
+  const linkedSpools = linkedSpoolsData?.linked;
+
   const { data: assignments } = useQuery({
     queryKey: ['spool-assignments', selectedPrinterId],
     queryFn: () => api.getAssignments(selectedPrinterId!),
@@ -92,11 +110,58 @@ export function SpoolBuddyAmsPage() {
     return map;
   }, [assignments]);
 
+  // Look up Spoolman fill level for a given tray
+  const printerSerial = printer?.serial_number ?? '';
+  const getSpoolmanFillForSlot = useCallback((amsId: number, trayId: number, tray: AMSTray | null): number | null => {
+    if (!linkedSpools || !printerSerial) return null;
+    const tag = (tray?.tray_uuid || tray?.tag_uid || getFallbackSpoolTag(printerSerial, amsId, trayId))?.toUpperCase();
+    const linkedSpool = tag ? linkedSpools[tag] : undefined;
+    return getSpoolmanFillLevel(linkedSpool);
+  }, [linkedSpools, printerSerial]);
+
   const isConnected = status?.connected ?? false;
-  const amsUnits = useMemo(() => status?.ams ?? [], [status?.ams]);
+
+  // Cache AMS data to prevent it disappearing on idle/offline printers
+  const cachedAmsData = useRef<PrinterStatus['ams']>([]);
+  useEffect(() => {
+    if (status?.ams && status.ams.length > 0) {
+      cachedAmsData.current = status.ams;
+    }
+  }, [status?.ams]);
+  const amsUnits = useMemo(() => {
+    const live = status?.ams;
+    return (live && live.length > 0) ? live : (cachedAmsData.current ?? []);
+  }, [status?.ams]);
   const regularAms = useMemo(() => amsUnits.filter(u => !u.is_ams_ht), [amsUnits]);
   const htAms = useMemo(() => amsUnits.filter(u => u.is_ams_ht), [amsUnits]);
-  const trayNow = status?.tray_now ?? 255;
+
+  // Build Spoolman fill-level override map for regular AMS cards
+  const spoolmanFillOverrides = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!linkedSpools || !printerSerial) return map;
+    for (const unit of regularAms) {
+      for (let i = 0; i < (unit.tray?.length ?? 0); i++) {
+        const tray = unit.tray![i];
+        const fill = getSpoolmanFillForSlot(unit.id, i, isTrayEmpty(tray) ? null : tray);
+        if (fill !== null) map[`${unit.id}-${i}`] = fill;
+      }
+    }
+    return map;
+  }, [linkedSpools, printerSerial, regularAms, getSpoolmanFillForSlot]);
+
+  // Cache tray_now to prevent flickering when undefined values come in
+  // Valid tray IDs: 0-253 for AMS, 254 for external spool
+  // tray_now=255 means "no tray loaded" (Bambu protocol sentinel) — never active
+  const cachedTrayNow = useRef<number | undefined>(undefined);
+  const currentTrayNow = status?.tray_now;
+  if (currentTrayNow !== undefined && currentTrayNow !== 255) {
+    cachedTrayNow.current = currentTrayNow;
+  } else if (currentTrayNow === 255) {
+    cachedTrayNow.current = undefined;
+  }
+  const effectiveTrayNow = (currentTrayNow !== undefined && currentTrayNow !== 255)
+    ? currentTrayNow
+    : cachedTrayNow.current;
   const isDualNozzle = printer?.nozzle_count === 2 || status?.temperatures?.nozzle_2 !== undefined;
   const vtTrays = useMemo(() => [...(status?.vt_tray ?? [])].sort((a, b) => (a.id ?? 254) - (b.id ?? 254)), [status?.vt_tray]);
 
@@ -141,17 +206,17 @@ export function SpoolBuddyAmsPage() {
   } | null>(null);
 
   const getActiveSlotForAms = useCallback((amsId: number): number | null => {
-    if (trayNow === 255 || trayNow === 254) return null;
+    if (effectiveTrayNow === undefined) return null;
     if (amsId <= 3) {
-      const activeAmsId = Math.floor(trayNow / 4);
-      if (activeAmsId === amsId) return trayNow % 4;
+      const activeAmsId = Math.floor(effectiveTrayNow / 4);
+      if (activeAmsId === amsId) return effectiveTrayNow % 4;
     }
     if (amsId >= 128 && amsId <= 135) {
-      const htIndex = amsId - 128;
-      if (trayNow === 16 + htIndex) return 0;
+      // AMS-HT: global tray ID equals the AMS unit ID itself (128, 129, ...)
+      if (effectiveTrayNow === getGlobalTrayId(amsId, 0, false)) return 0;
     }
     return null;
-  }, [trayNow]);
+  }, [effectiveTrayNow]);
 
   const handleAmsSlotClick = useCallback((amsId: number, trayId: number, tray: AMSTray | null) => {
     const globalTrayId = amsId >= 128 ? (amsId - 128) * 4 + trayId + 64 : amsId * 4 + trayId;
@@ -226,6 +291,8 @@ export function SpoolBuddyAmsPage() {
         tray_id_name: null, tray_info_idx: null, remain: -1, k: null,
         cali_idx: null, tag_uid: null, tray_uuid: null, nozzle_temp_min: null, nozzle_temp_max: null,
       };
+      // Fill level fallback chain: Spoolman → Inventory → AMS remain
+      const spoolmanFill = getSpoolmanFillForSlot(unit.id, 0, isTrayEmpty(tray) ? null : tray);
       const invFill = fillOverrides[`${unit.id}-0`] ?? null;
       const amsFill = tray.remain != null && tray.remain >= 0 ? tray.remain : null;
       // If inventory says 0% but AMS reports positive remain, prefer AMS (#676)
@@ -239,20 +306,23 @@ export function SpoolBuddyAmsPage() {
         temp: unit.temp,
         humidity: unit.humidity,
         nozzleSide: getNozzleSide(unit.id),
-        effectiveFill: resolvedInvFill ?? amsFill,
+        effectiveFill: spoolmanFill ?? resolvedInvFill ?? amsFill,
         onClick: () => handleAmsSlotClick(unit.id, 0, isTrayEmpty(tray) ? null : tray),
       });
     }
 
     for (const extTray of vtTrays) {
       const extTrayId = extTray.id ?? 254;
-      // tray_now=255 means "no tray loaded" (idle) — never active
-      const isExtActive = trayNow === 255 ? false
-        : isDualNozzle && trayNow === 254
-          ? (extTrayId === 254 && status?.active_extruder === 1) ||
-            (extTrayId === 255 && status?.active_extruder === 0)
-          : trayNow === extTrayId;
+      // On dual-nozzle (H2C/H2D), tray_now=254 means "external spool"
+      // generically — use active_extruder to determine L vs R:
+      // extruder 1=left → Ext-L (id=254), extruder 0=right → Ext-R (id=255)
+      const isExtActive = isDualNozzle && effectiveTrayNow === 254
+        ? (extTrayId === 254 && status?.active_extruder === 1) ||
+          (extTrayId === 255 && status?.active_extruder === 0)
+        : effectiveTrayNow === extTrayId;
       const extSlotTrayId = extTrayId - 254;
+      // Fill level fallback chain: Spoolman → Inventory → AMS remain
+      const extSpoolmanFill = getSpoolmanFillForSlot(255, extSlotTrayId, isTrayEmpty(extTray) ? null : extTray);
       const extInvFill = fillOverrides[`255-${extSlotTrayId}`] ?? null;
       const extAmsFill = extTray.remain != null && extTray.remain >= 0 ? extTray.remain : null;
       // If inventory says 0% but AMS reports positive remain, prefer AMS (#676)
@@ -266,13 +336,13 @@ export function SpoolBuddyAmsPage() {
         isEmpty: isTrayEmpty(extTray),
         isActive: isExtActive,
         nozzleSide: null,
-        effectiveFill: extResolvedInvFill ?? extAmsFill,
+        effectiveFill: extSpoolmanFill ?? extResolvedInvFill ?? extAmsFill,
         onClick: () => handleExtSlotClick(extTray),
       });
     }
 
     return items;
-  }, [htAms, vtTrays, isDualNozzle, trayNow, status?.active_extruder, t, getActiveSlotForAms, getNozzleSide, handleAmsSlotClick, handleExtSlotClick, fillOverrides]);
+  }, [htAms, vtTrays, isDualNozzle, effectiveTrayNow, status?.active_extruder, t, getActiveSlotForAms, getNozzleSide, handleAmsSlotClick, handleExtSlotClick, fillOverrides, getSpoolmanFillForSlot]);
 
   return (
     <div className="h-full flex flex-col p-4">
@@ -312,6 +382,7 @@ export function SpoolBuddyAmsPage() {
                   nozzleSide={getNozzleSide(unit.id)}
                   thresholds={amsThresholds}
                   fillOverrides={fillOverrides}
+                  spoolmanFillOverrides={spoolmanFillOverrides}
                 />
               ))}
             </div>
@@ -381,7 +452,7 @@ export function SpoolBuddyAmsPage() {
                             className="w-full rounded-full"
                             style={{
                               height: `${effectiveFill}%`,
-                              backgroundColor: effectiveFill > 50 ? '#22c55e' : effectiveFill > 20 ? '#f59e0b' : '#ef4444',
+                              backgroundColor: getFillBarColor(effectiveFill),
                             }}
                           />
                         </div>

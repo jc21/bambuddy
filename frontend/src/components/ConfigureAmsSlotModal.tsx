@@ -512,9 +512,11 @@ export function ConfigureAmsSlotModal({
       for (const cp of cloudSettings.filament) {
         coveredIds.add(cp.setting_id);
         // Keep preset if it matches the slot's saved mapping or current tray_info_idx
-        const isCurrentPreset = savedId === cp.setting_id
+        const isSavedPreset = savedId === cp.setting_id;
+        const isCurrentPreset = isSavedPreset
           || (trayIdx && (cp.setting_id === trayIdx || convertToTrayInfoIdx(cp.setting_id) === trayIdx));
-        if (!isCurrentPreset && query && !cp.name.toLowerCase().includes(query)) continue;
+        // Search filter applies to ALL presets (including saved) — no bypass
+        if (query && !cp.name.toLowerCase().includes(query)) continue;
         // Filter by printer model if set (skip for current preset)
         if (!isCurrentPreset && printerModel) {
           const presetModel = extractPresetModel(cp.name);
@@ -528,8 +530,7 @@ export function ConfigureAmsSlotModal({
     if (localPresets?.filament) {
       for (const lp of localPresets.filament) {
         const localId = `local_${lp.id}`;
-        const isSaved = savedId === localId;
-        if (!isSaved && query && !lp.name.toLowerCase().includes(query)) continue;
+        if (query && !lp.name.toLowerCase().includes(query)) continue;
         items.push({ id: localId, name: lp.name, source: 'local', isUser: false });
       }
     }
@@ -841,7 +842,7 @@ export function ConfigureAmsSlotModal({
                 <span className="text-white/30">|</span>
                 {slotInfo.trayColor && (
                   <span
-                    className="w-4 h-4 rounded-full border border-white/20"
+                    className="w-4 h-4 rounded-full border border-black/20"
                     style={{ backgroundColor: `#${slotInfo.trayColor.slice(0, 6)}` }}
                   />
                 )}
@@ -882,7 +883,7 @@ export function ConfigureAmsSlotModal({
               <div className="flex items-center gap-2">
                 {slotInfo.trayColor && (
                   <span
-                    className="w-4 h-4 rounded-full border border-white/20"
+                    className="w-4 h-4 rounded-full border border-black/20"
                     style={{ backgroundColor: `#${slotInfo.trayColor.slice(0, 6)}` }}
                   />
                 )}
@@ -1034,7 +1035,7 @@ export function ConfigureAmsSlotModal({
                             title={entry.color_name}
                           >
                             <span
-                              className="w-4 h-4 rounded-full border border-white/30 flex-shrink-0"
+                              className="w-4 h-4 rounded-full border border-black/20 flex-shrink-0"
                               style={{ backgroundColor: entry.hex_color }}
                             />
                             <span className="text-xs text-white/80 whitespace-nowrap">{entry.color_name}</span>
@@ -1269,7 +1270,7 @@ export function ConfigureAmsSlotModal({
                           title={entry.color_name}
                         >
                           <span
-                            className="w-4 h-4 rounded-full border border-white/30 flex-shrink-0"
+                            className="w-4 h-4 rounded-full border border-black/20 flex-shrink-0"
                             style={{ backgroundColor: entry.hex_color }}
                           />
                           <span className="text-xs text-white/80 whitespace-nowrap">{entry.color_name}</span>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Printer, Archive, Calendar, BarChart3, Cloud, Settings, Sun, Moon, ChevronLeft, ChevronRight, Keyboard, Github, GripVertical, ArrowUpCircle, Wrench, FolderKanban, FolderOpen, X, Menu, Info, Plug, Bug, LogOut, Key, Loader2, Disc3, ShieldAlert, type LucideIcon } from 'lucide-react';
+import { Printer, Archive, Calendar, BarChart3, Cloud, Settings, Sun, Moon, ChevronLeft, ChevronRight, Keyboard, Github, GripVertical, ArrowUpCircle, Wrench, FolderKanban, FolderOpen, X, Menu, Info, Plug, Bug, LogOut, Key, Loader2, Disc3, ShieldAlert, Bell, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -25,6 +25,7 @@ interface NavItem {
 }
 
 export const defaultNavItems: NavItem[] = [
+  // Primary workflow items
   { id: 'printers', to: '/', icon: Printer, labelKey: 'nav.printers' },
   { id: 'archives', to: '/archives', icon: Archive, labelKey: 'nav.archives' },
   { id: 'queue', to: '/queue', icon: Calendar, labelKey: 'nav.queue' },
@@ -34,6 +35,8 @@ export const defaultNavItems: NavItem[] = [
   { id: 'projects', to: '/projects', icon: FolderKanban, labelKey: 'nav.projects' },
   { id: 'inventory', to: '/inventory', icon: Disc3, labelKey: 'nav.inventory' },
   { id: 'files', to: '/files', icon: FolderOpen, labelKey: 'nav.files' },
+  // User-account features: kept adjacent to Settings intentionally
+  { id: 'notifications', to: '/notifications', icon: Bell, labelKey: 'nav.notifications' },
   { id: 'settings', to: '/settings', icon: Settings, labelKey: 'nav.settings' },
 ];
 
@@ -112,6 +115,47 @@ export function Layout() {
     queryKey: ['settings'],
     queryFn: api.getSettings,
     staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Fetch default sidebar order via a public endpoint (no settings:read needed)
+  const { data: defaultSidebarData } = useQuery({
+    queryKey: ['default-sidebar-order'],
+    queryFn: api.getDefaultSidebarOrder,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Apply admin default sidebar order once per user (skipped if already applied).
+  // Uses a per-user localStorage flag to prevent re-application.
+  useEffect(() => {
+    const defaultOrder = defaultSidebarData?.default_sidebar_order;
+    if (!defaultOrder) return;
+    // Wait for auth state to settle before applying to avoid double-execution
+    if (authEnabled && !user) return;
+    const appliedKey = user ? `sidebarDefaultApplied_${user.id}` : 'sidebarDefaultApplied';
+    if (localStorage.getItem(appliedKey)) return;
+    try {
+      const parsed = JSON.parse(defaultOrder);
+      const orderArr = Array.isArray(parsed) ? parsed : parsed.order;
+      if (!Array.isArray(orderArr) || orderArr.length === 0) return;
+      // Filter to valid sidebar item IDs only
+      const validIds = new Set(defaultNavItems.map(i => i.id));
+      const filtered = orderArr.filter((id: string) => typeof id === 'string' && (validIds.has(id) || isExternalLinkId(id)));
+      if (filtered.length > 0) {
+        setSidebarOrder(filtered);
+        saveSidebarOrder(filtered);
+        localStorage.setItem(appliedKey, '1');
+      }
+    } catch (e) {
+      console.error('Failed to apply default sidebar order:', e);
+    }
+  }, [defaultSidebarData?.default_sidebar_order, setSidebarOrder, user, authEnabled]);
+
+  // Check advanced auth status for conditional nav items
+  const { data: advancedAuthStatus } = useQuery({
+    queryKey: ['advancedAuthStatus'],
+    queryFn: api.getAdvancedAuthStatus,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: authEnabled,
   });
 
   const { data: updateCheck } = useQuery({
@@ -234,10 +278,15 @@ export function Layout() {
       inventory: 'inventory:read',
       files: 'library:read',
       settings: 'settings:read',
+      notifications: 'notifications:user_email',
     };
 
-    const isHidden = (id: string) =>
-      authEnabled && id in navPermissions && !hasPermission(navPermissions[id]);
+    const isHidden = (id: string) => {
+      if (authEnabled && id in navPermissions && !hasPermission(navPermissions[id])) return true;
+      // notifications nav item also requires advanced auth to be enabled and user_notifications_enabled setting
+      if (id === 'notifications' && (!authEnabled || !advancedAuthStatus?.advanced_auth_enabled || (settings?.user_notifications_enabled === false))) return true;
+      return false;
+    };
 
     // Add items in stored order
     for (const id of sidebarOrder) {
@@ -471,7 +520,7 @@ export function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-2">
+        <nav className="flex-1 p-2 overflow-y-auto">
           <ul className="space-y-2">
             {orderedSidebarIds.map((id) => {
               const isExternal = isExternalLinkId(id);

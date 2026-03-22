@@ -265,6 +265,10 @@ class BambuMQTTClient:
 
     MQTT_PORT = 8883
 
+    # Class-level cache: serial_number -> False when request topic is known unsupported.
+    # Persists across client instances so reconnects don't re-trigger failed subscriptions.
+    _request_topic_cache: dict[str, bool] = {}
+
     def __init__(
         self,
         ip_address: str,
@@ -332,9 +336,10 @@ class BambuMQTTClient:
         self._captured_ams_mapping: list[int] | None = None
 
         # Request topic subscription tracking
-        # Some printer MQTT brokers (e.g. P1S) reject subscriptions to the request
+        # Some printer MQTT brokers (e.g. P1S, A1) reject subscriptions to the request
         # topic by killing the TCP connection. We detect this and gracefully degrade.
-        self._request_topic_supported: bool = True
+        # Check class-level cache first so new client instances don't retry known-bad subscriptions.
+        self._request_topic_supported: bool = BambuMQTTClient._request_topic_cache.get(self.serial_number, True)
         self._request_topic_sub_mid: int | None = None
         self._request_topic_sub_time: float = 0.0
         self._request_topic_confirmed: bool = False
@@ -387,6 +392,7 @@ class BambuMQTTClient:
                         self.serial_number,
                     )
                     self._request_topic_supported = False
+                    BambuMQTTClient._request_topic_cache[self.serial_number] = False
             # Request full status update (includes nozzle info in push_status response)
             self._request_push_all()
             # Request firmware version info
@@ -414,6 +420,7 @@ class BambuMQTTClient:
                         rc.getName(),
                     )
                     self._request_topic_supported = False
+                    BambuMQTTClient._request_topic_cache[self.serial_number] = False
                 else:
                     logger.info(
                         "[%s] Request topic subscription accepted. "
@@ -421,6 +428,7 @@ class BambuMQTTClient:
                         self.serial_number,
                     )
                     self._request_topic_confirmed = True
+                    BambuMQTTClient._request_topic_cache[self.serial_number] = True
             self._request_topic_sub_mid = None
             self._request_topic_sub_time = 0.0
 
@@ -449,6 +457,7 @@ class BambuMQTTClient:
                 self.serial_number,
             )
             self._request_topic_supported = False
+            BambuMQTTClient._request_topic_cache[self.serial_number] = False
         self._request_topic_sub_mid = None
         self._request_topic_sub_time = 0.0
 
@@ -1399,8 +1408,11 @@ class BambuMQTTClient:
         # Check tray_exist_bits to clear empty slots (Issue #147)
         # New AMS models don't send empty tray data - they just update tray_exist_bits
         # Each bit in tray_exist_bits represents a slot: bit=0 means empty, bit=1 means has spool
+        # Skip when power_on_flag=False: printer shutdown sends all-zero bits which would
+        # wipe all slot data and cause auto-unlink to remove spool assignments (#765)
         tray_exist_bits_str = ams_data.get("tray_exist_bits") if isinstance(ams_data, dict) else None
-        if tray_exist_bits_str:
+        power_on = ams_data.get("power_on_flag", True) if isinstance(ams_data, dict) else True
+        if tray_exist_bits_str and power_on:
             try:
                 tray_exist_bits = int(tray_exist_bits_str, 16)
                 for ams_unit in merged_ams:
@@ -2404,6 +2416,14 @@ class BambuMQTTClient:
         ):
             should_trigger_completion = True
 
+        # Log when we see a terminal state but DON'T trigger completion (diagnostics)
+        if not should_trigger_completion and self.state.state in ("FINISH", "FAILED"):
+            logger.info(
+                f"[{self.serial_number}] State is {self.state.state} but completion NOT triggered: "
+                f"prev={self._previous_gcode_state}, was_running={self._was_running}, "
+                f"already_triggered={self._completion_triggered}, has_callback={bool(self.on_print_complete)}"
+            )
+
         if should_trigger_completion:
             if self.state.state == "FINISH":
                 status = "completed"
@@ -2932,7 +2952,9 @@ class BambuMQTTClient:
         """Check if logging is enabled."""
         return self._logging_enabled
 
-    def send_drying_command(self, ams_id: int, temp: int, duration: int, mode: int = 1, filament: str = ""):
+    def send_drying_command(
+        self, ams_id: int, temp: int, duration: int, mode: int = 1, filament: str = "", rotate_tray: bool = False
+    ):
         """Send AMS drying start/stop command.
 
         Args:
@@ -2941,6 +2963,7 @@ class BambuMQTTClient:
             duration: Drying duration in hours
             mode: 1=start, 0=stop
             filament: Filament type string (e.g. "PLA", "PETG")
+            rotate_tray: Whether to rotate the spool during drying for even heat
         """
         if not self._client:
             return False
@@ -2955,7 +2978,7 @@ class BambuMQTTClient:
                 "duration": duration,
                 "humidity": 0,
                 "mode": mode,
-                "rotate_tray": False,
+                "rotate_tray": rotate_tray,
                 "filament": filament,
                 "close_power_conflict": False,
             }

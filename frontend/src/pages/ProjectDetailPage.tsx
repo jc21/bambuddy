@@ -610,7 +610,10 @@ export function ProjectDetailPage() {
       )}
 
       {/* Cost tracking */}
-      {stats && (stats.estimated_cost > 0 || project.budget) && (
+      {stats && (() => {
+        const totalCost = stats.estimated_cost + stats.total_energy_cost + stats.bom_cost;
+        return (stats.estimated_cost > 0 || totalCost > 0 || project.budget !== null);
+      })() && (
         <Card>
           <CardContent className="p-4">
             <h2 className="text-lg font-semibold text-white mb-3">
@@ -636,20 +639,36 @@ export function ProjectDetailPage() {
                   </p>
                 </div>
               )}
-              {project.budget && (
-                <>
+              {(() => {
+                const totalCost = stats.estimated_cost + stats.total_energy_cost + stats.bom_cost;
+                if (totalCost <= 0) return null;
+                return (
+                  <div>
+                    <p className="text-xs text-bambu-gray uppercase">{t('projectDetail.cost.totalCost')}</p>
+                    <p className="text-lg font-semibold text-bambu-green">
+                      {currency}{totalCost.toFixed(2)}
+                    </p>
+                    {stats.bom_cost > 0 && (
+                      <p className="text-xs text-bambu-gray/70">{t('projectDetail.cost.includesBom')}</p>
+                    )}
+                  </div>
+                );
+              })()}
+              {project.budget !== null && (() => {
+                const totalCost = stats.estimated_cost + stats.total_energy_cost + stats.bom_cost;
+                const remaining = project.budget - totalCost;
+                return (
                   <div>
                     <p className="text-xs text-bambu-gray uppercase">{t('projectDetail.cost.budget')}</p>
-                    <p className="text-lg font-semibold text-white">{currency}{project.budget.toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-bambu-gray uppercase">{t('projectDetail.cost.remaining')}</p>
-                    <p className={`text-lg font-semibold ${project.budget - stats.estimated_cost >= 0 ? 'text-bambu-green' : 'text-red-400'}`}>
-                      {currency}{(project.budget - stats.estimated_cost).toFixed(2)}
+                    <p className="text-sm text-bambu-gray">
+                      {t('projectDetail.cost.total')}: <span className="text-white font-semibold">{currency}{project.budget.toFixed(2)}</span>
+                    </p>
+                    <p className={`text-sm ${remaining >= 0 ? 'text-bambu-green' : 'text-red-400'}`}>
+                      {t('projectDetail.cost.remaining')}: <span className="font-semibold">{currency}{remaining.toFixed(2)}</span>
                     </p>
                   </div>
-                </>
-              )}
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
@@ -1132,11 +1151,11 @@ export function ProjectDetailPage() {
                 </div>
               ))}
               {/* BOM Total */}
-              {bomItems.some(item => item.unit_price !== null) && (
+              {stats && stats.bom_cost > 0 && (
                 <div className="pt-2 mt-2 border-t border-bambu-dark-tertiary flex justify-between text-sm">
                   <span className="text-bambu-gray">{t('projectDetail.bom.totalCost')}</span>
                   <span className="text-white font-medium">
-                    {currency}{bomItems.reduce((sum, item) => sum + (item.unit_price || 0) * item.quantity_needed, 0).toFixed(2)}
+                    {currency}{stats.bom_cost.toFixed(2)}
                   </span>
                 </div>
               )}
@@ -1270,6 +1289,7 @@ export function ProjectDetailPage() {
       {showEditModal && (
         <ProjectModal
           t={t}
+          currencySymbol={currency}
           project={{
             ...project,
             archive_count: stats?.total_archives || 0,

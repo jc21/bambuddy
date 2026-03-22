@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Loader2, CheckCircle, XCircle, Layers } from 'lucide-react';
 import { api, type InventorySpool, type PrinterStatus, type AMSTray } from '../../api/client';
 import { AmsUnitCard, NozzleBadge } from './AmsUnitCard';
+import type { AmsThresholds } from './AmsUnitCard';
+import { getFillBarColor } from '../../utils/amsHelpers';
 
 function getAmsName(id: number): string {
   if (id <= 3) return `AMS ${String.fromCharCode(65 + id)}`;
@@ -62,6 +64,41 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
     enabled: isOpen && printerId !== null,
   });
 
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.getSettings(),
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: assignments } = useQuery({
+    queryKey: ['spool-assignments', printerId],
+    queryFn: () => api.getAssignments(printerId!),
+    enabled: isOpen && printerId !== null,
+    staleTime: 30 * 1000,
+  });
+
+  // Build fill-level override map from inventory assignments
+  const fillOverrides = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!assignments) return map;
+    for (const a of assignments) {
+      const sp = a.spool;
+      if (sp && sp.label_weight > 0 && sp.weight_used != null) {
+        const fill = Math.round(Math.max(0, sp.label_weight - sp.weight_used) / sp.label_weight * 100);
+        map[`${a.ams_id}-${a.tray_id}`] = fill;
+      }
+    }
+    return map;
+  }, [assignments]);
+
+  const amsThresholds: AmsThresholds | undefined = settings ? {
+    humidityGood: Number(settings.ams_humidity_good) || 40,
+    humidityFair: Number(settings.ams_humidity_fair) || 60,
+    tempGood: Number(settings.ams_temp_good) || 28,
+    tempFair: Number(settings.ams_temp_fair) || 35,
+  } : undefined;
+
   const isConnected = status?.connected ?? false;
   const amsUnits = useMemo(() => status?.ams ?? [], [status?.ams]);
   const regularAms = useMemo(() => amsUnits.filter(u => !u.is_ams_ht), [amsUnits]);
@@ -100,25 +137,9 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
         tray_id: trayId,
       });
 
-      // Save slot preset mapping so ConfigureAmsSlotModal can show the preset
-      // (same as ConfigureAmsSlotModal does after configuring a slot)
-      if (spool.slicer_filament) {
-        const base = spool.slicer_filament.includes('_')
-          ? spool.slicer_filament.split('_')[0]
-          : spool.slicer_filament;
-        // Convert filament_id (GFL05) → setting_id (GFSL05); user presets (P*) pass through
-        const presetId = base.startsWith('GF') && !base.startsWith('GFS')
-          ? 'GFS' + base.slice(2)
-          : base;
-        const presetName = spool.subtype
-          ? `${spool.material} ${spool.subtype}`
-          : spool.material;
-        try {
-          await api.saveSlotPreset(printerId, amsId, trayId, presetId, presetName, 'cloud');
-        } catch (e) {
-          console.warn('Failed to save slot preset mapping:', e);
-        }
-      }
+      // Slot preset mapping is now saved by the backend in assign_spool()
+      // after successful MQTT configuration, using the authoritative
+      // slicer_filament_name from the spool record.
     },
     onSuccess: () => {
       setStatusType('success');
@@ -146,6 +167,7 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
     const items: {
       key: string; label: string; amsId: number; trayId: number;
       tray: AMSTray; isEmpty: boolean; nozzleSide: 'L' | 'R' | null;
+      effectiveFill: number | null;
     }[] = [];
 
     for (const unit of htAms) {
@@ -154,28 +176,37 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
         tray_id_name: null, tray_info_idx: null, remain: -1, k: null,
         cali_idx: null, tag_uid: null, tray_uuid: null, nozzle_temp_min: null, nozzle_temp_max: null,
       };
+      const invFill = fillOverrides[`${unit.id}-0`] ?? null;
+      const amsFill = tray.remain != null && tray.remain >= 0 ? tray.remain : null;
+      const resolvedInvFill = (invFill === 0 && amsFill !== null && amsFill > 0) ? null : invFill;
       items.push({
         key: `ht-${unit.id}`, label: getAmsName(unit.id),
         amsId: unit.id, trayId: 0, tray, isEmpty: isTrayEmpty(tray),
         nozzleSide: getNozzleSide(unit.id),
+        effectiveFill: resolvedInvFill ?? amsFill,
       });
     }
 
     for (const extTray of vtTrays) {
       const extTrayId = extTray.id ?? 254;
+      const extSlotTrayId = extTrayId - 254;
+      const extInvFill = fillOverrides[`255-${extSlotTrayId}`] ?? null;
+      const extAmsFill = extTray.remain != null && extTray.remain >= 0 ? extTray.remain : null;
+      const extResolvedInvFill = (extInvFill === 0 && extAmsFill !== null && extAmsFill > 0) ? null : extInvFill;
       items.push({
         key: `ext-${extTrayId}`,
         label: isDualNozzle
           ? (extTrayId === 254 ? t('printers.extL', 'Ext-L') : t('printers.extR', 'Ext-R'))
           : t('printers.ext', 'Ext'),
-        amsId: 255, trayId: extTrayId - 254, tray: extTray,
+        amsId: 255, trayId: extSlotTrayId, tray: extTray,
         isEmpty: isTrayEmpty(extTray),
         nozzleSide: isDualNozzle ? (extTrayId === 254 ? 'L' : 'R') : null,
+        effectiveFill: extResolvedInvFill ?? extAmsFill,
       });
     }
 
     return items;
-  }, [htAms, vtTrays, isDualNozzle, t, getNozzleSide]);
+  }, [htAms, vtTrays, isDualNozzle, t, getNozzleSide, fillOverrides]);
 
   if (!isOpen) return null;
 
@@ -252,6 +283,8 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
                     onConfigureSlot={(_amsId, trayId) => handleSlotClick(unit.id, trayId)}
                     isDualNozzle={isDualNozzle}
                     nozzleSide={getNozzleSide(unit.id)}
+                    thresholds={amsThresholds}
+                    fillOverrides={fillOverrides}
                   />
                 ))}
               </div>
@@ -260,7 +293,7 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
             {/* Single-slot items (HT + External) */}
             {singleSlots.length > 0 && (
               <div className="flex gap-2 shrink-0">
-                {singleSlots.map(({ key, label, amsId, trayId, tray, isEmpty, nozzleSide }) => {
+                {singleSlots.map(({ key, label, amsId, trayId, tray, isEmpty, nozzleSide, effectiveFill }) => {
                   const color = trayColorToCSS(tray.tray_color);
                   return (
                     <div
@@ -294,13 +327,13 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
                           {isEmpty ? 'Empty' : tray.tray_type || '?'}
                         </div>
                       </div>
-                      {!isEmpty && tray.remain != null && tray.remain >= 0 && (
+                      {!isEmpty && effectiveFill != null && effectiveFill >= 0 && (
                         <div className="w-1.5 h-8 bg-bambu-dark-tertiary rounded-full overflow-hidden shrink-0 flex flex-col-reverse">
                           <div
                             className="w-full rounded-full"
                             style={{
-                              height: `${tray.remain}%`,
-                              backgroundColor: tray.remain > 50 ? '#22c55e' : tray.remain > 20 ? '#f59e0b' : '#ef4444',
+                              height: `${effectiveFill}%`,
+                              backgroundColor: getFillBarColor(effectiveFill),
                             }}
                           />
                         </div>

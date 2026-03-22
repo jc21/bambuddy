@@ -12,12 +12,11 @@
 #   ./docker-publish-daily-beta.sh --skip-release   # Build+push without GitHub release
 #
 # Reads APP_VERSION from backend/app/core/config.py (must be a beta version like 0.2.2b1).
-# Appends a daily date suffix to create a unique tag (e.g., 0.2.2b3-daily.20260311),
-# avoiding collisions with release tags. Builds and pushes a multi-arch Docker image.
-# Optionally creates/updates a GitHub prerelease.
+# Builds and pushes a multi-arch Docker image tagged as 'daily'. Each push overwrites the
+# previous 'daily' image. A GitHub prerelease is created with a date-stamped tag for history.
 #
-# Beta versions are never tagged as 'latest'. Users update by pulling the daily tag
-# (e.g., docker pull ghcr.io/maziggy/bambuddy:0.2.2b3-daily.20260311) or using Watchtower.
+# Users can stay up to date by pulling the 'daily' tag or using Watchtower:
+#   docker pull ghcr.io/maziggy/bambuddy:daily
 #
 # Prerequisites:
 #   1. Log in to ghcr.io:
@@ -109,12 +108,13 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+b[0-9]+$ ]]; then
     exit 1
 fi
 
-# Append date suffix to differentiate daily builds from releases
+# Date-stamped tag for GitHub releases only (not used as Docker tag)
 DAILY_DATE=$(date +%Y%m%d)
 DAILY_TAG="${VERSION}-daily.${DAILY_DATE}"
 
 echo -e "${GREEN}  APP_VERSION: ${VERSION}${NC}"
-echo -e "${GREEN}  Daily tag:   ${DAILY_TAG}${NC}"
+echo -e "${GREEN}  Docker tag:  daily${NC}"
+echo -e "${GREEN}  Release tag: v${DAILY_TAG}${NC}"
 
 # ============================================================
 # Step 2: Build & push Docker images
@@ -126,8 +126,8 @@ CPU_COUNT=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN}  Daily beta build${NC}"
-echo -e "${GREEN}  Version: ${VERSION}${NC}"
-echo -e "${GREEN}  Tag:     ${DAILY_TAG}${NC}"
+echo -e "${GREEN}  Version:   ${VERSION}${NC}"
+echo -e "${GREEN}  Docker tag: daily${NC}"
 echo -e "${GREEN}  Platforms: ${PLATFORMS}${NC}"
 echo -e "${GREEN}  CPU cores: ${CPU_COUNT}${NC}"
 if [ "$PARALLEL" = true ]; then
@@ -187,16 +187,16 @@ if ! docker buildx inspect --bootstrap | grep -q "linux/arm64"; then
     docker run --privileged --rm tonistiigi/binfmt --install all
 fi
 
-# Beta versions never get 'latest' tag
-echo -e "${YELLOW}Beta version — skipping 'latest' tag${NC}"
+# Beta versions get 'daily' tag (never 'latest')
+echo -e "${YELLOW}Beta version — tagging as 'daily' (not 'latest')${NC}"
 
 # Build tags for all target registries
 TAGS=""
 if [ "$PUSH_GHCR" = true ]; then
-    TAGS="$TAGS -t ${GHCR_IMAGE}:${DAILY_TAG}"
+    TAGS="$TAGS -t ${GHCR_IMAGE}:daily"
 fi
 if [ "$PUSH_DOCKERHUB" = true ]; then
-    TAGS="$TAGS -t ${DOCKERHUB_IMAGE}:${DAILY_TAG}"
+    TAGS="$TAGS -t ${DOCKERHUB_IMAGE}:daily"
 fi
 
 # Common build args (no cache to ensure clean builds)
@@ -210,12 +210,12 @@ if [ "$PARALLEL" = true ]; then
     ARCH_TAGS_AMD64=""
     ARCH_TAGS_ARM64=""
     if [ "$PUSH_GHCR" = true ]; then
-        ARCH_TAGS_AMD64="$ARCH_TAGS_AMD64 -t ${GHCR_IMAGE}:${DAILY_TAG}-amd64"
-        ARCH_TAGS_ARM64="$ARCH_TAGS_ARM64 -t ${GHCR_IMAGE}:${DAILY_TAG}-arm64"
+        ARCH_TAGS_AMD64="$ARCH_TAGS_AMD64 -t ${GHCR_IMAGE}:daily-amd64"
+        ARCH_TAGS_ARM64="$ARCH_TAGS_ARM64 -t ${GHCR_IMAGE}:daily-arm64"
     fi
     if [ "$PUSH_DOCKERHUB" = true ]; then
-        ARCH_TAGS_AMD64="$ARCH_TAGS_AMD64 -t ${DOCKERHUB_IMAGE}:${DAILY_TAG}-amd64"
-        ARCH_TAGS_ARM64="$ARCH_TAGS_ARM64 -t ${DOCKERHUB_IMAGE}:${DAILY_TAG}-arm64"
+        ARCH_TAGS_AMD64="$ARCH_TAGS_AMD64 -t ${DOCKERHUB_IMAGE}:daily-amd64"
+        ARCH_TAGS_ARM64="$ARCH_TAGS_ARM64 -t ${DOCKERHUB_IMAGE}:daily-arm64"
     fi
 
     # Build amd64 in background
@@ -255,16 +255,16 @@ if [ "$PARALLEL" = true ]; then
     if [ "$PUSH_GHCR" = true ]; then
         echo -e "${BLUE}  Creating GHCR manifest...${NC}"
         docker buildx imagetools create \
-            -t "${GHCR_IMAGE}:${DAILY_TAG}" \
-            "${GHCR_IMAGE}:${DAILY_TAG}-amd64" \
-            "${GHCR_IMAGE}:${DAILY_TAG}-arm64"
+            -t "${GHCR_IMAGE}:daily" \
+            "${GHCR_IMAGE}:daily-amd64" \
+            "${GHCR_IMAGE}:daily-arm64"
     fi
     if [ "$PUSH_DOCKERHUB" = true ]; then
         echo -e "${BLUE}  Creating Docker Hub manifest...${NC}"
         docker buildx imagetools create \
-            -t "${DOCKERHUB_IMAGE}:${DAILY_TAG}" \
-            "${DOCKERHUB_IMAGE}:${DAILY_TAG}-amd64" \
-            "${DOCKERHUB_IMAGE}:${DAILY_TAG}-arm64"
+            -t "${DOCKERHUB_IMAGE}:daily" \
+            "${DOCKERHUB_IMAGE}:daily-amd64" \
+            "${DOCKERHUB_IMAGE}:daily-arm64"
     fi
 else
     # Sequential build (default): Build both platforms in one command
@@ -296,15 +296,15 @@ else
     # Build pull commands for the release body
     PULL_COMMANDS=""
     if [ "$PUSH_GHCR" = true ]; then
-        PULL_COMMANDS="docker pull ghcr.io/maziggy/bambuddy:${DAILY_TAG}"
+        PULL_COMMANDS="docker pull ghcr.io/maziggy/bambuddy:daily"
     fi
     if [ "$PUSH_DOCKERHUB" = true ]; then
         if [ -n "$PULL_COMMANDS" ]; then
             PULL_COMMANDS="${PULL_COMMANDS}
 # or
-docker pull maziggy/bambuddy:${DAILY_TAG}"
+docker pull maziggy/bambuddy:daily"
         else
-            PULL_COMMANDS="docker pull maziggy/bambuddy:${DAILY_TAG}"
+            PULL_COMMANDS="docker pull maziggy/bambuddy:daily"
         fi
     fi
 
@@ -327,11 +327,14 @@ ${CHANGELOG_NOTES}
 EOF
     )
 
-    # Delete existing release so the new one gets today's date
-    # (gh release edit only updates title/notes, not the creation timestamp)
-    if gh release view "v${DAILY_TAG}" >/dev/null 2>&1; then
-        echo "  Deleting old release v${DAILY_TAG} (will recreate with today's date)..."
-        gh release delete "v${DAILY_TAG}" --yes --cleanup-tag
+    # Delete ALL old daily releases — only the latest daily build should exist
+    echo "  Cleaning up old daily releases..."
+    OLD_DAILY_RELEASES=$(gh release list --limit 100 --json tagName --jq '.[] | select(.tagName | test("-daily\\.")) | .tagName' 2>/dev/null || true)
+    if [ -n "$OLD_DAILY_RELEASES" ]; then
+        while IFS= read -r old_tag; do
+            echo "  Deleting old daily release: ${old_tag}..."
+            gh release delete "$old_tag" --yes --cleanup-tag 2>/dev/null || true
+        done <<< "$OLD_DAILY_RELEASES"
     fi
 
     # Create/move tag to current HEAD and push
@@ -354,11 +357,11 @@ echo -e "${BLUE}[4/4] Verifying...${NC}"
 
 if [ "$PUSH_GHCR" = true ]; then
     echo -e "${BLUE}GHCR manifest:${NC}"
-    docker buildx imagetools inspect "${GHCR_IMAGE}:${DAILY_TAG}"
+    docker buildx imagetools inspect "${GHCR_IMAGE}:daily"
 fi
 if [ "$PUSH_DOCKERHUB" = true ]; then
     echo -e "${BLUE}Docker Hub manifest:${NC}"
-    docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${DAILY_TAG}"
+    docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:daily"
 fi
 
 if [ "$SKIP_RELEASE" != true ]; then
@@ -376,10 +379,10 @@ echo -e "${GREEN}  Daily beta build complete!${NC}"
 echo -e "${GREEN}  Version: ${VERSION}${NC}"
 echo -e "${GREEN}================================================${NC}"
 if [ "$PUSH_GHCR" = true ]; then
-    echo "  GHCR:       ${GHCR_IMAGE}:${DAILY_TAG}"
+    echo "  GHCR:       ${GHCR_IMAGE}:daily"
 fi
 if [ "$PUSH_DOCKERHUB" = true ]; then
-    echo "  Docker Hub: ${DOCKERHUB_IMAGE}:${DAILY_TAG}"
+    echo "  Docker Hub: ${DOCKERHUB_IMAGE}:daily"
 fi
 if [ "$SKIP_RELEASE" != true ]; then
     echo "  Release:    https://github.com/${IMAGE_NAME}/releases/tag/v${DAILY_TAG}"
@@ -391,9 +394,9 @@ echo "  - linux/arm64 (Raspberry Pi 4/5, Apple Silicon)"
 echo ""
 echo -e "${GREEN}Users can now run:${NC}"
 if [ "$PUSH_GHCR" = true ]; then
-    echo "  docker pull ${GHCR_IMAGE}:${DAILY_TAG}"
+    echo "  docker pull ${GHCR_IMAGE}:daily"
 fi
 if [ "$PUSH_DOCKERHUB" = true ]; then
-    echo "  docker pull ${DOCKERHUB_IMAGE}:${DAILY_TAG}"
-    echo "  docker pull ${IMAGE_NAME}:${DAILY_TAG}  # shorthand"
+    echo "  docker pull ${DOCKERHUB_IMAGE}:daily"
+    echo "  docker pull ${IMAGE_NAME}:daily  # shorthand"
 fi

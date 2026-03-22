@@ -137,7 +137,7 @@ DEFAULT_TEMPLATES = [
     {
         "event_type": "queue_job_waiting",
         "name": "Queue Job Waiting",
-        "title_template": "Job Waiting for Filament",
+        "title_template": "Queue Job Waiting",
         "body_template": "{job_name} waiting for {target_model}\n{waiting_reason}",
     },
     {
@@ -169,5 +169,30 @@ DEFAULT_TEMPLATES = [
         "name": "Password Reset",
         "title_template": "{app_name} - Password Reset",
         "body_template": "Hello {username},\n\nYour password has been reset.\nNew Password: {password}\n\nLogin at: {login_url}",
+    },
+    # User email notification templates (sent to the print job owner)
+    {
+        "event_type": "user_print_start",
+        "name": "User Print Started",
+        "title_template": "Your Print Has Started",
+        "body_template": "Hello {username},\n\nYour print job has started on {printer}.\n\nFile: {filename}\n\nYou will be notified when it completes.",
+    },
+    {
+        "event_type": "user_print_complete",
+        "name": "User Print Completed",
+        "title_template": "Your Print Is Complete",
+        "body_template": "Hello {username},\n\nYour print job has completed on {printer}.\n\nFile: {filename}",
+    },
+    {
+        "event_type": "user_print_failed",
+        "name": "User Print Failed",
+        "title_template": "Your Print Has Failed",
+        "body_template": "Hello {username},\n\nYour print job has failed on {printer}.\n\nFile: {filename}",
+    },
+    {
+        "event_type": "user_print_stopped",
+        "name": "User Print Stopped",
+        "title_template": "Your Print Has Been Stopped",
+        "body_template": "Hello {username},\n\nYour print job was stopped on {printer}.\n\nFile: {filename}",
     },
 ]

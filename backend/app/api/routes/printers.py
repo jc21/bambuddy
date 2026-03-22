@@ -1470,6 +1470,7 @@ async def start_drying(
     temp: int = 45,
     duration: int = 4,
     filament: str = "",
+    rotate_tray: bool = False,
     _=RequirePermissionIfAuthEnabled(Permission.PRINTERS_CONTROL),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1490,7 +1491,9 @@ async def start_drying(
     if duration < 1 or duration > 24:
         raise HTTPException(400, "Duration must be 1-24 hours")
 
-    success = printer_manager.send_drying_command(printer_id, ams_id, temp, duration, mode=1, filament=filament)
+    success = printer_manager.send_drying_command(
+        printer_id, ams_id, temp, duration, mode=1, filament=filament, rotate_tray=rotate_tray
+    )
     if not success:
         raise HTTPException(400, "Printer not connected")
     return {"status": "drying_started", "ams_id": ams_id, "temp": temp, "duration": duration}
@@ -2297,6 +2300,31 @@ async def resume_print(
         raise HTTPException(500, "Failed to resume print")
 
     return {"success": True, "message": "Print resume command sent"}
+
+
+@router.post("/{printer_id}/print-speed")
+async def set_print_speed(
+    printer_id: int,
+    mode: int = Query(..., description="Speed mode (1=silent, 2=standard, 3=sport, 4=ludicrous)"),
+    _=RequirePermissionIfAuthEnabled(Permission.PRINTERS_CONTROL),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the print speed mode."""
+    result = await db.execute(select(Printer).where(Printer.id == printer_id))
+    printer = result.scalar_one_or_none()
+    if not printer:
+        raise HTTPException(404, "Printer not found")
+
+    client = printer_manager.get_client(printer_id)
+    if not client:
+        raise HTTPException(400, "Printer not connected")
+
+    success = client.set_print_speed(mode)
+    if not success:
+        raise HTTPException(500, "Failed to set print speed")
+
+    speed_names = {1: "Silent", 2: "Standard", 3: "Sport", 4: "Ludicrous"}
+    return {"success": True, "message": f"Print speed set to {speed_names.get(mode, 'Unknown')}"}
 
 
 @router.post("/{printer_id}/chamber-light")

@@ -58,6 +58,7 @@ class ProjectStats(BaseModel):
     # BOM stats (Phase 7)
     bom_total_items: int = 0
     bom_completed_items: int = 0
+    bom_cost: float = 0.0  # Total cost of BOM items (sum of unit_price * quantity_needed)
 
 
 class ProjectChildPreview(BaseModel):
@@ -120,6 +121,7 @@ class ProjectListResponse(BaseModel):
     status: str
     target_count: int | None
     target_parts_count: int | None = None
+    budget: float | None = None
     created_at: datetime
     # Quick stats
     archive_count: int = 0  # Number of print jobs
