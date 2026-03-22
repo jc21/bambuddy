@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { SpoolBuddyOutletContext } from '../../components/spoolbuddy/SpoolBuddyLayout';
-import { spoolbuddyApi, type SpoolBuddyDevice, type DaemonUpdateCheck } from '../../api/client';
+import { spoolbuddyApi, type SpoolBuddyDevice } from '../../api/client';
 function formatUptime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
@@ -502,45 +502,16 @@ function ScaleTab({ device, weight, weightStable, rawAdc }: {
 
 function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
   const { t } = useTranslation();
-  const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [updateResult, setUpdateResult] = useState<DaemonUpdateCheck | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [includeBeta, setIncludeBeta] = useState(() => {
-    try {
-      return localStorage.getItem('spoolbuddy-include-beta') === 'true';
-    } catch {
-      return false;
-    }
-  });
 
   const isUpdating = device.update_status === 'pending' || device.update_status === 'updating';
 
-  const toggleBeta = () => {
-    const next = !includeBeta;
-    setIncludeBeta(next);
-    try {
-      localStorage.setItem('spoolbuddy-include-beta', String(next));
-    } catch {
-      // localStorage unavailable
-    }
-    setUpdateResult(null);
-    setError(null);
-  };
-
-  const checkForUpdates = async () => {
-    setChecking(true);
-    setUpdateResult(null);
-    setError(null);
-    try {
-      const result = await spoolbuddyApi.checkDaemonUpdate(device.device_id, includeBeta);
-      setUpdateResult(result);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to check for updates');
-    } finally {
-      setChecking(false);
-    }
-  };
+  const { data: updateResult, isLoading: checking, refetch } = useQuery({
+    queryKey: ['spoolbuddy-update-check', device.device_id],
+    queryFn: () => spoolbuddyApi.checkDaemonUpdate(device.device_id, true),
+    staleTime: 4 * 60 * 1000,
+  });
 
   const applyUpdate = async () => {
     setApplying(true);
@@ -554,7 +525,6 @@ function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
     }
   };
 
-  // Show version from device, or from update check result if available
   const displayVersion = device.firmware_version
     || (updateResult?.current_version && updateResult.current_version !== '0.0.0' ? updateResult.current_version : null);
 
@@ -617,7 +587,7 @@ function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
       {/* Check for updates */}
       <div className="bg-zinc-800 rounded-lg p-4 space-y-3">
         <button
-          onClick={checkForUpdates}
+          onClick={() => refetch()}
           disabled={checking || isUpdating}
           className="w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-zinc-700 text-zinc-200 hover:bg-zinc-600 disabled:opacity-40 transition-colors min-h-[44px] flex items-center justify-center gap-2"
         >
@@ -681,20 +651,6 @@ function UpdatesTab({ device }: { device: SpoolBuddyDevice }) {
           </div>
         )}
 
-        {/* Include beta toggle */}
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-xs text-zinc-500">{t('spoolbuddy.settings.includeBeta', 'Include beta versions')}</span>
-          <button
-            onClick={toggleBeta}
-            className={`relative w-10 h-5 rounded-full transition-colors ${
-              includeBeta ? 'bg-green-600' : 'bg-zinc-600'
-            }`}
-          >
-            <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-              includeBeta ? 'translate-x-5' : 'translate-x-0.5'
-            }`} />
-          </button>
-        </div>
       </div>
     </div>
   );
