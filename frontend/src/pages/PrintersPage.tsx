@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,6 +41,7 @@ import {
   CheckCircle,
   XCircle,
   User,
+  Home,
   Printer as PrinterIcon,
   Info,
   Cable,
@@ -1553,8 +1554,8 @@ function PrinterCard({
   const [showEditModal, setShowEditModal] = useState(false);
   const [showFileManager, setShowFileManager] = useState(false);
   const [showMQTTDebug, setShowMQTTDebug] = useState(false);
-  const [showPowerOnConfirm, setShowPowerOnConfirm] = useState<number | null>(null);
-  const [showPowerOffConfirm, setShowPowerOffConfirm] = useState<number | null>(null);
+  const [showPowerOnConfirm, setShowPowerOnConfirm] = useState(false);
+  const [showPowerOffConfirm, setShowPowerOffConfirm] = useState(false);
   const [showHMSModal, setShowHMSModal] = useState(false);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
@@ -1779,19 +1780,24 @@ function PrinterCard({
     ? currentTrayNow
     : cachedTrayNow.current;
 
-  // Fetch smart plugs for this printer
-  const { data: smartPlugs } = useQuery({
-    queryKey: ['smartPlugsByPrinter', printer.id],
-    queryFn: () => api.getAllSmartPlugsByPrinter(printer.id),
+  // Fetch smart plug for this printer
+  const { data: smartPlug } = useQuery({
+    queryKey: ['smartPlugByPrinter', printer.id],
+    queryFn: () => api.getSmartPlugByPrinter(printer.id),
   });
 
-  // Fetch smart plug status for all plugs (faster refresh for energy monitoring)
-  const plugStatusResults = useQueries({
-    queries: (smartPlugs || []).map(plug => ({
-      queryKey: ['smartPlugStatus', plug.id],
-      queryFn: () => api.getSmartPlugStatus(plug.id),
-      refetchInterval: 10000, // 10 seconds for real-time power display
-    })),
+  // Fetch script plugs for this printer (for multi-device control)
+  const { data: scriptPlugs } = useQuery({
+    queryKey: ['scriptPlugsByPrinter', printer.id],
+    queryFn: () => api.getScriptPlugsByPrinter(printer.id),
+  });
+
+  // Fetch smart plug status if plug exists (faster refresh for energy monitoring)
+  const { data: plugStatus } = useQuery({
+    queryKey: ['smartPlugStatus', smartPlug?.id],
+    queryFn: () => smartPlug ? api.getSmartPlugStatus(smartPlug.id) : null,
+    enabled: !!smartPlug,
+    refetchInterval: 10000, // 10 seconds for real-time power display
   });
 
   // Fetch queue count for this printer
@@ -1886,26 +1892,26 @@ function PrinterCard({
 
   // Smart plug control mutations
   const powerControlMutation = useMutation({
-    mutationFn: ({ plugId, action }: { plugId: number; action: 'on' | 'off' }) =>
-      api.controlSmartPlug(plugId, action),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['smartPlugsByPrinter', printer.id] });
-      queryClient.invalidateQueries({ queryKey: ['smartPlugStatus', variables.plugId] });
+    mutationFn: (action: 'on' | 'off') =>
+      smartPlug ? api.controlSmartPlug(smartPlug.id, action) : Promise.reject('No plug'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['smartPlugStatus', smartPlug?.id] });
     },
   });
 
   const toggleAutoOffMutation = useMutation({
-    mutationFn: ({ plugId, enabled }: { plugId: number; enabled: boolean }) =>
-      api.updateSmartPlug(plugId, { auto_off: enabled }),
+    mutationFn: (enabled: boolean) =>
+      smartPlug ? api.updateSmartPlug(smartPlug.id, { auto_off: enabled }) : Promise.reject('No plug'),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['smartPlugsByPrinter', printer.id] });
+      queryClient.invalidateQueries({ queryKey: ['smartPlugByPrinter', printer.id] });
+      // Also invalidate the smart-plugs list to keep Settings page in sync
       queryClient.invalidateQueries({ queryKey: ['smart-plugs'] });
     },
   });
 
-  // Run HA script mutation
+  // Run HA entity mutation — scripts use 'on' (trigger), switches use 'toggle'
   const runScriptMutation = useMutation({
-    mutationFn: (id: number) => api.controlSmartPlug(id, 'on'),
+    mutationFn: ({ id, action }: { id: number; action: 'on' | 'toggle' }) => api.controlSmartPlug(id, action),
     onSuccess: () => {
       showToast(t('printers.toast.scriptTriggered'));
     },
@@ -3963,104 +3969,118 @@ function PrinterCard({
         )}
 
         {/* Smart Plug Controls - hidden in compact mode */}
-        {smartPlugs && smartPlugs.length > 0 && viewMode === 'expanded' && (
-          <div className="mt-4 pt-4 border-t border-bambu-dark-tertiary space-y-2">
-            {smartPlugs.map((plug, index) => {
-              const plugStatus = plugStatusResults[index]?.data;
-              const isScript = plug.plug_type === 'homeassistant' && plug.ha_entity_id?.startsWith('script.');
-              return (
-                <div key={plug.id} className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Zap className="w-4 h-4 text-bambu-gray flex-shrink-0" />
-                    <span className="text-sm text-white truncate">{plug.name}</span>
-                    {plugStatus && (
-                      <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
-                        plugStatus.state === 'ON'
-                          ? 'bg-bambu-green/20 text-bambu-green'
-                          : plugStatus.state === 'OFF'
-                          ? 'bg-red-500/20 text-red-400'
-                          : 'bg-bambu-gray/20 text-bambu-gray'
-                      }`}>
-                        {plugStatus.state || '?'}
-                        {plugStatus.state === 'ON' && plugStatus.energy?.power != null && (
-                          <span className="text-yellow-400 ml-1.5">· {plugStatus.energy.power}W</span>
-                        )}
-                      </span>
+        {smartPlug && viewMode === 'expanded' && (
+          <div className="mt-4 pt-4 border-t border-bambu-dark-tertiary">
+            <div className="flex items-center gap-3">
+              {/* Plug name and status */}
+              <div className="flex items-center gap-2 min-w-0">
+                <Zap className="w-4 h-4 text-bambu-gray flex-shrink-0" />
+                <span className="text-sm text-white truncate">{smartPlug.name}</span>
+                {plugStatus && (
+                  <span
+                    className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+                      plugStatus.state === 'ON'
+                        ? 'bg-bambu-green/20 text-bambu-green'
+                        : plugStatus.state === 'OFF'
+                        ? 'bg-red-500/20 text-red-400'
+                        : 'bg-bambu-gray/20 text-bambu-gray'
+                    }`}
+                  >
+                    {plugStatus.state || '?'}
+                    {plugStatus.state === 'ON' && plugStatus.energy?.power != null && (
+                      <span className="text-yellow-400 ml-1.5">· {plugStatus.energy.power}W</span>
                     )}
-                  </div>
-                  <div className="flex-1" />
-                  {isScript ? (
-                    <button
-                      onClick={() => runScriptMutation.mutate(plug.id)}
-                      disabled={runScriptMutation.isPending || !hasPermission('smart_plugs:control')}
-                      className="px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                      title={!hasPermission('smart_plugs:control') ? t('printers.permission.noSmartPlugControl') : 'Run script'}
-                    >
-                      <Play className="w-3 h-3" />
-                      Run
-                    </button>
-                  ) : (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setShowPowerOnConfirm(plug.id)}
-                      disabled={powerControlMutation.isPending || plugStatus?.state === 'ON' || !hasPermission('smart_plugs:control')}
-                      className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
-                        !hasPermission('smart_plugs:control')
-                          ? 'bg-bambu-dark text-bambu-gray/50 cursor-not-allowed'
-                          : plugStatus?.state === 'ON'
-                          ? 'bg-bambu-green text-white'
-                          : 'bg-bambu-dark text-bambu-gray hover:text-white hover:bg-bambu-dark-tertiary'
-                      }`}
-                      title={!hasPermission('smart_plugs:control') ? t('printers.permission.noSmartPlugControl') : undefined}
-                    >
-                      <Power className="w-3 h-3" />
-                      On
-                    </button>
-                    <button
-                      onClick={() => setShowPowerOffConfirm(plug.id)}
-                      disabled={powerControlMutation.isPending || plugStatus?.state === 'OFF' || !hasPermission('smart_plugs:control')}
-                      className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
-                        !hasPermission('smart_plugs:control')
-                          ? 'bg-bambu-dark text-bambu-gray/50 cursor-not-allowed'
-                          : plugStatus?.state === 'OFF'
-                          ? 'bg-red-500/30 text-red-400'
-                          : 'bg-bambu-dark text-bambu-gray hover:text-white hover:bg-bambu-dark-tertiary'
-                      }`}
-                      title={!hasPermission('smart_plugs:control') ? t('printers.permission.noSmartPlugControl') : undefined}
-                    >
-                      <PowerOff className="w-3 h-3" />
-                      Off
-                    </button>
-                  </div>
-                  )}
-                  {!isScript && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className={`text-xs hidden sm:inline ${plug.auto_off_executed ? 'text-bambu-green' : 'text-bambu-gray'}`}>
-                      {plug.auto_off_executed ? 'Auto-off done' : 'Auto-off'}
-                    </span>
-                    <button
-                      onClick={() => toggleAutoOffMutation.mutate({ plugId: plug.id, enabled: !plug.auto_off })}
-                      disabled={toggleAutoOffMutation.isPending || plug.auto_off_executed || !hasPermission('smart_plugs:control')}
-                      title={!hasPermission('smart_plugs:control') ? t('printers.permission.noSmartPlugControl') : (plug.auto_off_executed ? t('printers.autoOffExecuted') : t('printers.autoOffAfterPrint'))}
-                      className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
-                        !hasPermission('smart_plugs:control')
-                          ? 'bg-bambu-dark-tertiary/50 cursor-not-allowed'
-                          : plug.auto_off_executed
-                          ? 'bg-bambu-green/50 cursor-not-allowed'
-                          : plug.auto_off ? 'bg-bambu-green' : 'bg-bambu-dark-tertiary'
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-[2px] left-[2px] w-4 h-4 bg-white rounded-full transition-transform ${
-                          plug.auto_off || plug.auto_off_executed ? 'translate-x-4' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  )}
+                  </span>
+                )}
+              </div>
+
+              {/* Spacer */}
+              <div className="flex-1" />
+
+              {/* Power buttons */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setShowPowerOnConfirm(true)}
+                  disabled={powerControlMutation.isPending || plugStatus?.state === 'ON' || !hasPermission('smart_plugs:control')}
+                  className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                    !hasPermission('smart_plugs:control')
+                      ? 'bg-bambu-dark text-bambu-gray/50 cursor-not-allowed'
+                      : plugStatus?.state === 'ON'
+                        ? 'bg-bambu-green text-white'
+                        : 'bg-bambu-dark text-bambu-gray hover:text-white hover:bg-bambu-dark-tertiary'
+                  }`}
+                  title={!hasPermission('smart_plugs:control') ? t('printers.permission.noSmartPlugControl') : undefined}
+                >
+                  <Power className="w-3 h-3" />
+                  On
+                </button>
+                <button
+                  onClick={() => setShowPowerOffConfirm(true)}
+                  disabled={powerControlMutation.isPending || plugStatus?.state === 'OFF' || !hasPermission('smart_plugs:control')}
+                  className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                    !hasPermission('smart_plugs:control')
+                      ? 'bg-bambu-dark text-bambu-gray/50 cursor-not-allowed'
+                      : plugStatus?.state === 'OFF'
+                        ? 'bg-red-500/30 text-red-400'
+                        : 'bg-bambu-dark text-bambu-gray hover:text-white hover:bg-bambu-dark-tertiary'
+                  }`}
+                  title={!hasPermission('smart_plugs:control') ? t('printers.permission.noSmartPlugControl') : undefined}
+                >
+                  <PowerOff className="w-3 h-3" />
+                  Off
+                </button>
+              </div>
+
+              {/* Auto-off toggle */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className={`text-xs hidden sm:inline ${smartPlug.auto_off_executed ? 'text-bambu-green' : 'text-bambu-gray'}`}>
+                  {smartPlug.auto_off_executed ? 'Auto-off done' : 'Auto-off'}
+                </span>
+                <button
+                  onClick={() => toggleAutoOffMutation.mutate(!smartPlug.auto_off)}
+                  disabled={toggleAutoOffMutation.isPending || smartPlug.auto_off_executed || !hasPermission('smart_plugs:control')}
+                  title={!hasPermission('smart_plugs:control') ? t('printers.permission.noSmartPlugControl') : (smartPlug.auto_off_executed ? t('printers.autoOffExecuted') : t('printers.autoOffAfterPrint'))}
+                  className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+                    !hasPermission('smart_plugs:control')
+                      ? 'bg-bambu-dark-tertiary/50 cursor-not-allowed'
+                      : smartPlug.auto_off_executed
+                        ? 'bg-bambu-green/50 cursor-not-allowed'
+                        : smartPlug.auto_off ? 'bg-bambu-green' : 'bg-bambu-dark-tertiary'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-[2px] left-[2px] w-4 h-4 bg-white rounded-full transition-transform ${
+                      smartPlug.auto_off || smartPlug.auto_off_executed ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* HA entity buttons row */}
+            {scriptPlugs && scriptPlugs.length > 0 && (
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-bambu-dark-tertiary/50">
+                <Home className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
+                <span className="text-xs text-bambu-gray">HA:</span>
+                <div className="flex flex-wrap gap-1">
+                  {scriptPlugs.map(script => {
+                    const isScript = script.ha_entity_id?.startsWith('script.');
+                    return (
+                      <button
+                        key={script.id}
+                        onClick={() => runScriptMutation.mutate({ id: script.id, action: isScript ? 'on' : 'toggle' })}
+                        disabled={runScriptMutation.isPending}
+                        title={`${isScript ? 'Run' : 'Toggle'} ${script.ha_entity_id}`}
+                        className="px-2 py-0.5 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded transition-colors flex items-center gap-1"
+                      >
+                        <Play className="w-2.5 h-2.5" />
+                        {script.name}
+                      </button>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            )}
           </div>
         )}
 
@@ -4494,36 +4514,36 @@ function PrinterCard({
       )}
 
       {/* Power On Confirmation */}
-      {showPowerOnConfirm !== null && (
+      {showPowerOnConfirm && smartPlug && (
         <ConfirmModal
           title={t('printers.confirm.powerOnTitle')}
-          message={t('printers.confirm.powerOnMessage', { name: smartPlugs?.find(p => p.id === showPowerOnConfirm)?.name || '' })}
+          message={t('printers.confirm.powerOnMessage', { name: printer.name })}
           confirmText={t('printers.confirm.powerOnButton')}
           variant="default"
           onConfirm={() => {
-            powerControlMutation.mutate({ plugId: showPowerOnConfirm, action: 'on' });
-            setShowPowerOnConfirm(null);
+            powerControlMutation.mutate('on');
+            setShowPowerOnConfirm(false);
           }}
-          onCancel={() => setShowPowerOnConfirm(null)}
+          onCancel={() => setShowPowerOnConfirm(false)}
         />
       )}
 
       {/* Power Off Confirmation */}
-      {showPowerOffConfirm !== null && (
+      {showPowerOffConfirm && smartPlug && (
         <ConfirmModal
           title={t('printers.confirm.powerOffTitle')}
           message={
             status?.state === 'RUNNING'
-              ? t('printers.confirm.powerOffWarning', { name: smartPlugs?.find(p => p.id === showPowerOffConfirm)?.name || '' })
-              : t('printers.confirm.powerOffMessage', { name: smartPlugs?.find(p => p.id === showPowerOffConfirm)?.name || '' })
+              ? t('printers.confirm.powerOffWarning', { name: printer.name })
+              : t('printers.confirm.powerOffMessage', { name: printer.name })
           }
           confirmText={t('printers.confirm.powerOffButton')}
           variant="danger"
           onConfirm={() => {
-            powerControlMutation.mutate({ plugId: showPowerOffConfirm, action: 'off' });
-            setShowPowerOffConfirm(null);
+            powerControlMutation.mutate('off');
+            setShowPowerOffConfirm(false);
           }}
-          onCancel={() => setShowPowerOffConfirm(null)}
+          onCancel={() => setShowPowerOffConfirm(false)}
         />
       )}
 

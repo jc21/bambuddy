@@ -3277,7 +3277,6 @@ export const api = {
   getSmartPlug: (id: number) => request<SmartPlug>(`/smart-plugs/${id}`),
   getSmartPlugByPrinter: (printerId: number) => request<SmartPlug | null>(`/smart-plugs/by-printer/${printerId}`),
   getScriptPlugsByPrinter: (printerId: number) => request<SmartPlug[]>(`/smart-plugs/by-printer/${printerId}/scripts`),
-  getAllSmartPlugsByPrinter: (printerId: number) => request<SmartPlug[]>(`/smart-plugs/by-printer/${printerId}/all`),
   createSmartPlug: (data: SmartPlugCreate) =>
     request<SmartPlug>('/smart-plugs/', {
       method: 'POST',

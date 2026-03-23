@@ -80,7 +80,8 @@ export function SmartPlugCard({ plug, onEdit }: SmartPlugCardProps) {
       queryClient.invalidateQueries({ queryKey: ['smart-plugs'] });
       // Also invalidate printer-specific smart plug queries to keep PrintersPage in sync
       if (plug.printer_id) {
-        queryClient.invalidateQueries({ queryKey: ['smartPlugsByPrinter', plug.printer_id] });
+        queryClient.invalidateQueries({ queryKey: ['smartPlugByPrinter', plug.printer_id] });
+        queryClient.invalidateQueries({ queryKey: ['scriptPlugsByPrinter', plug.printer_id] });
       }
     },
   });
@@ -92,7 +93,7 @@ export function SmartPlugCard({ plug, onEdit }: SmartPlugCardProps) {
       queryClient.invalidateQueries({ queryKey: ['smart-plugs'] });
       // Also invalidate printer card HA entity queries
       if (plug.printer_id) {
-        queryClient.invalidateQueries({ queryKey: ['smartPlugsByPrinter', plug.printer_id] });
+        queryClient.invalidateQueries({ queryKey: ['scriptPlugsByPrinter', plug.printer_id] });
       }
     },
   });

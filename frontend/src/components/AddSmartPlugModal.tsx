@@ -255,7 +255,7 @@ export function AddSmartPlugModal({ plug, onClose }: AddSmartPlugModalProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['smart-plugs'] });
       // Also invalidate printer card HA entity queries
-      queryClient.invalidateQueries({ queryKey: ['smartPlugsByPrinter'] });
+      queryClient.invalidateQueries({ queryKey: ['scriptPlugsByPrinter'] });
       onClose();
     },
     onError: (err: Error) => {
@@ -269,7 +269,7 @@ export function AddSmartPlugModal({ plug, onClose }: AddSmartPlugModalProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['smart-plugs'] });
       // Also invalidate printer card HA entity queries
-      queryClient.invalidateQueries({ queryKey: ['smartPlugsByPrinter'] });
+      queryClient.invalidateQueries({ queryKey: ['scriptPlugsByPrinter'] });
       onClose();
     },
     onError: (err: Error) => {
