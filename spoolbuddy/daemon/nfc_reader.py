@@ -28,7 +28,7 @@ class NFCReader:
         self._last_status_log = 0.0
 
         try:
-            from read_tag import PN5180
+            from .pn5180 import PN5180
 
             self._nfc = PN5180()
             self._init_rf()

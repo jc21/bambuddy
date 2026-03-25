@@ -20,7 +20,7 @@ class ScaleReader:
         self._last_raw = 0
 
         try:
-            from scale_diag import NAU7802
+            from .nau7802 import NAU7802
 
             self._scale = NAU7802()
             self._scale.init()
