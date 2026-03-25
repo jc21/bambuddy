@@ -124,7 +124,7 @@ async def nfc_poll_loop(config: Config, api: APIClient, shared: dict):
             # Check for pending write command
             pending = shared.get("pending_write")
             if pending and nfc.state == NFCState.TAG_PRESENT:
-                if nfc.current_sak == 0x00:
+                if nfc.current_sak in (0x00, 0x04):
                     logger.info("Executing pending tag write for spool %d", pending["spool_id"])
                     success, msg = await asyncio.to_thread(nfc.write_ntag, pending["ndef_data"])
                     await api.write_tag_result(

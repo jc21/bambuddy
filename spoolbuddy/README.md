@@ -123,7 +123,7 @@ Place a tag on the reader. Supported tag types:
 |---------------------|--------|------------------------------|
 | MIFARE Classic 1K   | `0x08` | Bambu Lab filament tags      |
 | MIFARE Classic 4K   | `0x18` | Bambu Lab filament tags      |
-| NTAG (213/215/216)  | `0x00` | SpoolEase / OpenPrintTag     |
+| NTAG (213/215/216)  | `0x00` / `0x04` | SpoolEase / OpenPrintTag     |
 
 ### Troubleshooting
 

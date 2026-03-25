@@ -98,7 +98,7 @@ class NFCReader:
         """
         if self._state != NFCState.TAG_PRESENT:
             return False, "No tag present"
-        if self._current_sak != 0x00:
+        if self._current_sak not in (0x00, 0x04):
             return False, f"Not an NTAG (SAK=0x{self._current_sak:02X})"
         if not self._nfc:
             return False, "NFC reader not available"
@@ -205,7 +205,7 @@ class NFCReader:
 
                 # Try reading Bambu tag data
                 tray_uuid = None
-                tag_type = "mifare_classic" if sak in (0x08, 0x18) else "ntag" if sak == 0x00 else "unknown"
+                tag_type = "mifare_classic" if sak in (0x08, 0x18) else "ntag" if sak in (0x00, 0x04) else "unknown"
 
                 if sak in (0x08, 0x18):
                     blocks = self._nfc.read_bambu_tag(uid_bytes)
