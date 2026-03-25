@@ -12,7 +12,7 @@ def _set_sqlite_pragmas(dbapi_conn, connection_record):
     # WAL mode allows concurrent readers + one writer (vs default DELETE mode which locks entirely)
     cursor.execute("PRAGMA journal_mode = WAL")
     # Wait up to 5 seconds when the database is locked instead of failing immediately
-    cursor.execute("PRAGMA busy_timeout = 5000")
+    cursor.execute("PRAGMA busy_timeout = 15000")
     cursor.execute("PRAGMA synchronous = NORMAL")
     cursor.close()
 
@@ -20,8 +20,8 @@ def _set_sqlite_pragmas(dbapi_conn, connection_record):
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=20,
+    max_overflow=200,
 )
 
 # Register the pragma listener on the underlying sync engine
@@ -46,8 +46,8 @@ async def reinitialize_database():
     engine = create_async_engine(
         settings.database_url,
         echo=settings.debug,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=20,
+        max_overflow=200,
     )
     event.listen(engine.sync_engine, "connect", _set_sqlite_pragmas)
     async_session = async_sessionmaker(
