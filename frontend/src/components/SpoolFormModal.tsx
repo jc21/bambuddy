@@ -372,7 +372,7 @@ export function SpoolFormModal({
 
   const deleteTagMutation = useMutation({
     mutationFn: () =>
-      api.updateSpool(spool!.id, { tag_uid: null } as Parameters<typeof api.updateSpool>[1]),
+      api.updateSpool(spool!.id, { tag_uid: null, tray_uuid: null, tag_type: null, data_origin: null } as Parameters<typeof api.updateSpool>[1]),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['inventory-spools'] });
       showToast(t('inventory.tagDeleted', 'Tag removed'), 'success');
