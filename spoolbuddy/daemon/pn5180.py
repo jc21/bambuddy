@@ -480,8 +480,8 @@ class PN5180:
         if len(data) != 4:
             return False
 
-        # Disable CRC
-        self.write_reg_and(0x19, 0xFFFFFFFE)  # TX CRC off
+        # NTAG WRITE needs TX CRC on (tag expects CRC), RX CRC off (ACK is 4-bit, no CRC)
+        self.write_reg_or(0x19, 0x01)  # TX CRC on
         self.write_reg_and(0x12, 0xFFFFFFFE)  # RX CRC off
 
         # Clear IRQs and set transceive mode
