@@ -452,11 +452,35 @@ install_wifi_safeguard() {
         return
     fi
 
+    # Write a helper script (avoids quote escaping issues in APT config)
+    local helper="/usr/local/sbin/preserve-wifi"
+    cat > "$helper" << 'HELPEREOF'
+#!/bin/sh
+# Called by APT hooks to preserve NetworkManager WiFi connections.
+NM_DIR="/etc/NetworkManager/system-connections"
+BAK_DIR="/etc/NetworkManager/system-connections.bak"
+case "$1" in
+  backup)
+    if [ -d "$NM_DIR" ] && [ -n "$(ls -A "$NM_DIR" 2>/dev/null)" ]; then
+      cp -a "$NM_DIR/" "$BAK_DIR/"
+    fi
+    ;;
+  restore)
+    if [ -d "$BAK_DIR" ] && [ -z "$(ls -A "$NM_DIR" 2>/dev/null)" ]; then
+      cp -a "$BAK_DIR"/* "$NM_DIR"/
+      nmcli general reload 2>/dev/null
+    fi
+    rm -rf "$BAK_DIR" 2>/dev/null
+    ;;
+esac
+HELPEREOF
+    chmod +x "$helper"
+
     cat > "$hook_file" << 'APTEOF'
 // Preserve NetworkManager WiFi connections across apt upgrades.
 // Installed by SpoolBuddy — prevents headless Pis from losing WiFi.
-DPkg::Pre-Invoke { "if [ -d /etc/NetworkManager/system-connections ] && [ -n \"$(ls -A /etc/NetworkManager/system-connections/ 2>/dev/null)\" ]; then cp -a /etc/NetworkManager/system-connections/ /etc/NetworkManager/system-connections.bak/; fi"; };
-DPkg::Post-Invoke { "if [ -d /etc/NetworkManager/system-connections.bak ] && [ -z \"$(ls -A /etc/NetworkManager/system-connections/ 2>/dev/null)\" ]; then cp -a /etc/NetworkManager/system-connections.bak/* /etc/NetworkManager/system-connections/ && nmcli general reload 2>/dev/null; fi"; };
+DPkg::Pre-Invoke { "/usr/local/sbin/preserve-wifi backup"; };
+DPkg::Post-Invoke { "/usr/local/sbin/preserve-wifi restore"; };
 APTEOF
 
     success "WiFi safeguard installed (${hook_file})"
