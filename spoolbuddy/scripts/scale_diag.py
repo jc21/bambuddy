@@ -5,6 +5,7 @@ Standalone diagnostic script — the NAU7802 driver lives in
 spoolbuddy/daemon/nau7802.py and is imported from there.
 """
 
+import logging
 import sys
 import time
 from pathlib import Path
@@ -14,6 +15,9 @@ import smbus2
 # Add daemon package to sys.path so we can import the driver
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from daemon.nau7802 import I2C_BUS, NAU7802, NAU7802_ADDR
+
+# Show driver debug output (init steps, etc.) during diagnostics
+logging.basicConfig(level=logging.DEBUG, format="  %(message)s")
 
 
 def main():

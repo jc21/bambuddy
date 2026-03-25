@@ -7,6 +7,7 @@ spoolbuddy/daemon/pn5180.py and is imported from there.
 Supports: Bambu (MIFARE Classic) + NTAG (SpoolEase/OpenPrintTag)
 """
 
+import logging
 import sys
 import time
 from pathlib import Path
@@ -14,6 +15,9 @@ from pathlib import Path
 # Add daemon package to sys.path so we can import the driver
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from daemon.pn5180 import BAMBU_BLOCKS, PN5180
+
+# Show driver debug output during diagnostics
+logging.basicConfig(level=logging.DEBUG, format="  %(message)s")
 
 
 def _print_hex_dump(data: bytes, label: str, bytes_per_line: int = 16):
