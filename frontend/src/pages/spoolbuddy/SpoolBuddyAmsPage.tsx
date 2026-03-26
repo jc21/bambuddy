@@ -736,19 +736,42 @@ export function SpoolBuddyAmsPage() {
         );
       })()}
 
-      {/* Assign spool modal (inventory) */}
+      {/* Assign spool modal (inventory) — ref callback constrains modal to viewport on small SpoolBuddy screen */}
       {assignSpoolModal && (
-        <AssignSpoolModal
-          isOpen={!!assignSpoolModal}
-          onClose={() => {
-            setAssignSpoolModal(null);
-            queryClient.invalidateQueries({ queryKey: ['spool-assignments', selectedPrinterId] });
-          }}
-          printerId={assignSpoolModal.printerId}
-          amsId={assignSpoolModal.amsId}
-          trayId={assignSpoolModal.trayId}
-          trayInfo={assignSpoolModal.trayInfo}
-        />
+        <div ref={(el) => {
+          if (!el) return;
+          // Find the modal panel (the relative div inside the fixed overlay)
+          const panel = el.querySelector<HTMLElement>(':scope > div > div.relative');
+          if (panel) {
+            panel.style.maxHeight = '90vh';
+            panel.style.display = 'flex';
+            panel.style.flexDirection = 'column';
+            // Content div is the second child (after header)
+            const children = Array.from(panel.children) as HTMLElement[];
+            // Header (first) and footer (last) stay fixed, content in between scrolls
+            for (let i = 0; i < children.length; i++) {
+              if (i === 0 || i === children.length - 1) {
+                children[i].style.flexShrink = '0';
+              } else if (i === 1) {
+                children[i].style.flex = '1 1 0';
+                children[i].style.minHeight = '0';
+                children[i].style.overflowY = 'auto';
+              }
+            }
+          }
+        }}>
+          <AssignSpoolModal
+            isOpen={!!assignSpoolModal}
+            onClose={() => {
+              setAssignSpoolModal(null);
+              queryClient.invalidateQueries({ queryKey: ['spool-assignments', selectedPrinterId] });
+            }}
+            printerId={assignSpoolModal.printerId}
+            amsId={assignSpoolModal.amsId}
+            trayId={assignSpoolModal.trayId}
+            trayInfo={assignSpoolModal.trayInfo}
+          />
+        </div>
       )}
 
       {/* Link spool modal (Spoolman) */}
