@@ -18,15 +18,15 @@ from PIL import Image, ImageDraw, ImageFilter
 
 # --- Configuration ---
 WIDTH, HEIGHT = 1024, 600
-BG_CENTER = (45, 45, 45)  # Brighter center for more visible gradient
-BG_EDGE = (5, 5, 5)  # Darker edges for stronger contrast
-ACCENT = (0, 174, 66)  # SpoolBuddy green (#00AE42)
-ACCENT_GLOW = (0, 220, 85)  # Brighter glow core
+BG_CENTER = (55, 55, 55)  # Notably lighter center
+BG_EDGE = (2, 2, 2)  # Nearly black edges
+ACCENT = (0, 200, 75)  # Brighter SpoolBuddy green
+ACCENT_GLOW = (0, 255, 100)  # Vivid glow core
 LOGO_SCALE = 0.50  # Scale logo to 50% of canvas width
-GLOW_RADIUS = 120  # Wider glow spread
-VIGNETTE_STRENGTH = 0.70  # Stronger edge darkening
-RAY_COUNT = 24  # Number of radial light rays
-RAY_OPACITY = 28  # More visible rays (0-255)
+GLOW_RADIUS = 160  # Very wide glow spread
+VIGNETTE_STRENGTH = 0.85  # Heavy edge darkening
+RAY_COUNT = 32  # More radial light rays
+RAY_OPACITY = 50  # Clearly visible rays (0-255)
 
 
 def radial_gradient(size, center_color, edge_color):
@@ -179,15 +179,20 @@ def generate_splash(output_path):
     # 4. Glow behind logo (two layers: wide diffuse + tight bright)
     print("  Rendering glow effects...")
 
-    # Wide diffuse glow
-    glow_wide = create_glow(logo, ACCENT, radius=GLOW_RADIUS, intensity=2.0)
-    # Expand glow canvas to full size
+    # Wide diffuse glow — very prominent
+    glow_wide = create_glow(logo, ACCENT, radius=GLOW_RADIUS, intensity=3.0)
     glow_canvas = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     glow_canvas.paste(glow_wide, (logo_x, logo_y), glow_wide)
     canvas = Image.alpha_composite(canvas.convert("RGBA"), glow_canvas)
 
-    # Tighter brighter glow
-    glow_tight = create_glow(logo, ACCENT_GLOW, radius=GLOW_RADIUS // 3, intensity=1.5)
+    # Medium glow layer for extra punch
+    glow_mid = create_glow(logo, ACCENT_GLOW, radius=GLOW_RADIUS // 2, intensity=2.5)
+    glow_canvas_mid = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    glow_canvas_mid.paste(glow_mid, (logo_x, logo_y), glow_mid)
+    canvas = Image.alpha_composite(canvas, glow_canvas_mid)
+
+    # Tighter bright glow core
+    glow_tight = create_glow(logo, ACCENT_GLOW, radius=GLOW_RADIUS // 4, intensity=2.0)
     glow_canvas2 = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     glow_canvas2.paste(glow_tight, (logo_x, logo_y), glow_tight)
     canvas = Image.alpha_composite(canvas, glow_canvas2)
