@@ -364,7 +364,7 @@ export function AssignToAmsModal({ isOpen, onClose, spool, printerId }: AssignTo
       )}
 
       {/* AMS slots */}
-      <div className="flex-1 flex flex-col gap-3 p-4 min-h-0">
+      <div className="flex-1 flex flex-col gap-3 p-4 min-h-0 overflow-y-auto">
         {!isConnected && printerId ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center text-white/50">
