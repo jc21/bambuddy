@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { SpoolBuddyTopBar } from './SpoolBuddyTopBar';
 import { SpoolBuddyBottomNav } from './SpoolBuddyBottomNav';
 import { SpoolBuddyStatusBar } from './SpoolBuddyStatusBar';
 import { useSpoolBuddyState } from '../../hooks/useSpoolBuddyState';
-import { api, spoolbuddyApi } from '../../api/client';
+import { api, spoolbuddyApi, type Printer } from '../../api/client';
 import { VirtualKeyboard } from '../VirtualKeyboard';
 
 export function SpoolBuddyLayout() {
@@ -124,6 +124,41 @@ export function SpoolBuddyLayout() {
     return () => clearInterval(interval);
   }, [displayBlankTimeout]);
 
+  // Online printers list for swipe-to-switch
+  const { data: printers = [] } = useQuery({
+    queryKey: ['printers'],
+    queryFn: () => api.getPrinters(),
+  });
+  const statusQueries = useQueries({
+    queries: printers.map((printer: Printer) => ({
+      queryKey: ['printerStatus', printer.id],
+      queryFn: () => api.getPrinterStatus(printer.id),
+      refetchInterval: 10000,
+    })),
+  });
+  const onlinePrinters = useMemo(() => {
+    return printers.filter((_: Printer, i: number) => statusQueries[i]?.data?.connected);
+  }, [printers, statusQueries]);
+
+  // Swipe left/right to cycle through online printers
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const SWIPE_THRESHOLD = 50;
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, []);
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current || onlinePrinters.length < 2) return;
+    const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
+    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dy) > Math.abs(dx)) return;
+    const currentIdx = onlinePrinters.findIndex((p: Printer) => p.id === selectedPrinterId);
+    const nextIdx = dx < 0
+      ? (currentIdx + 1) % onlinePrinters.length          // swipe left → next
+      : (currentIdx - 1 + onlinePrinters.length) % onlinePrinters.length; // swipe right → prev
+    setSelectedPrinterId(onlinePrinters[nextIdx].id);
+  }, [onlinePrinters, selectedPrinterId, setSelectedPrinterId]);
+
   // CSS brightness filter (software dimming)
   const brightnessStyle = displayBrightness < 100
     ? { filter: `brightness(${displayBrightness / 100})` } as const
@@ -133,7 +168,9 @@ export function SpoolBuddyLayout() {
     <>
       <div
         className="w-screen h-screen bg-bambu-dark text-white flex flex-col overflow-hidden"
-        style={brightnessStyle}
+        style={{ ...brightnessStyle, overscrollBehaviorX: 'none' }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
         <SpoolBuddyTopBar
           selectedPrinterId={selectedPrinterId}
