@@ -905,42 +905,51 @@ function SystemTab({ device }: { device: SpoolBuddyDevice }) {
         )}
       </div>
 
-      {/* OS Info */}
-      <div className="bg-zinc-800 rounded-lg p-3">
-        <h3 className="text-sm font-semibold text-zinc-300 mb-2">
-          {t('spoolbuddy.settings.osInfo', 'OS')}
-        </h3>
-        <div className="space-y-1.5 text-xs">
-          {stats.os?.os && (
-            <div className="flex justify-between">
-              <span className="text-zinc-500">{t('spoolbuddy.settings.distro', 'Distro')}</span>
-              <span className="text-zinc-300 truncate ml-2">{stats.os.os}</span>
-            </div>
-          )}
-          {stats.os?.kernel && (
-            <div className="flex justify-between">
-              <span className="text-zinc-500">{t('spoolbuddy.settings.kernel', 'Kernel')}</span>
-              <span className="text-zinc-300 font-mono truncate ml-2">{stats.os.kernel}</span>
-            </div>
-          )}
-          {stats.os?.arch && (
-            <div className="flex justify-between">
-              <span className="text-zinc-500">{t('spoolbuddy.settings.arch', 'Arch')}</span>
-              <span className="text-zinc-300 font-mono">{stats.os.arch}</span>
-            </div>
-          )}
-          {stats.os?.python && (
-            <div className="flex justify-between">
-              <span className="text-zinc-500">Python</span>
-              <span className="text-zinc-300 font-mono">{stats.os.python}</span>
-            </div>
-          )}
-          {stats.system_uptime_s != null && (
-            <div className="flex justify-between">
-              <span className="text-zinc-500">{t('spoolbuddy.settings.systemUptime', 'System Uptime')}</span>
-              <span className="text-zinc-300">{formatSystemUptime(stats.system_uptime_s)}</span>
-            </div>
-          )}
+      {/* OS Info — two columns */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-zinc-800 rounded-lg p-3">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+            {t('spoolbuddy.settings.osInfo', 'OS')}
+          </h3>
+          <div className="space-y-1 text-xs">
+            {stats.os?.os && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">{t('spoolbuddy.settings.distro', 'Distro')}</span>
+                <span className="text-zinc-300 truncate ml-2">{stats.os.os}</span>
+              </div>
+            )}
+            {stats.os?.kernel && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">{t('spoolbuddy.settings.kernel', 'Kernel')}</span>
+                <span className="text-zinc-300 font-mono truncate ml-2">{stats.os.kernel}</span>
+              </div>
+            )}
+            {stats.os?.arch && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">{t('spoolbuddy.settings.arch', 'Arch')}</span>
+                <span className="text-zinc-300 font-mono">{stats.os.arch}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="bg-zinc-800 rounded-lg p-3">
+          <h3 className="text-sm font-semibold text-zinc-300 mb-1">
+            {t('spoolbuddy.settings.runtime', 'Runtime')}
+          </h3>
+          <div className="space-y-1 text-xs">
+            {stats.os?.python && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Python</span>
+                <span className="text-zinc-300 font-mono">{stats.os.python}</span>
+              </div>
+            )}
+            {stats.system_uptime_s != null && (
+              <div className="flex justify-between">
+                <span className="text-zinc-500">{t('spoolbuddy.settings.systemUptime', 'Uptime')}</span>
+                <span className="text-zinc-300">{formatSystemUptime(stats.system_uptime_s)}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
