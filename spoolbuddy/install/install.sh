@@ -878,7 +878,7 @@ setup_kiosk() {
     fi
 
     # ── Install kiosk packages ────────────────────────────────────────────
-    run_with_progress "Installing kiosk packages" apt-get install -y labwc chromium plymouth wlr-randr
+    run_with_progress "Installing kiosk packages" apt-get install -y labwc chromium fbi wlr-randr
 
     # ── config.txt tweaks ─────────────────────────────────────────────────
     local boot_config="/boot/firmware/config.txt"
@@ -928,11 +928,17 @@ setup_kiosk() {
     if [[ -f "$cmdline" ]]; then
         info "Configuring $cmdline for kiosk..."
 
-        # Remove serial console (Plymouth needs tty-only console)
+        # Remove serial console (frees tty1 for splash and kiosk)
         sed -i 's/console=serial0,[0-9]* //' "$cmdline"
 
-        # Add splash quiet loglevel=3 logo.nologo if missing
-        grep -q "splash" "$cmdline" || sed -i 's/$/ splash quiet loglevel=3 logo.nologo/' "$cmdline"
+        # Add quiet loglevel=3 logo.nologo if missing (suppress boot text)
+        grep -q "loglevel=3" "$cmdline" || sed -i 's/$/ quiet loglevel=3 logo.nologo/' "$cmdline"
+
+        # Hide kernel text cursor during boot
+        grep -q "vt.global_cursor_default=0" "$cmdline" || sed -i 's/$/ vt.global_cursor_default=0/' "$cmdline"
+
+        # Remove Plymouth "splash" keyword if present (fbi replaces Plymouth)
+        sed -i 's/ splash / /g; s/^splash //; s/ splash$//' "$cmdline"
 
         # Add video mode if missing
         grep -q "video=HDMI-A-1" "$cmdline" || sed -i 's/$/ video=HDMI-A-1:1024x600@60/' "$cmdline"
@@ -940,47 +946,53 @@ setup_kiosk() {
         success "Kernel cmdline updated"
     fi
 
-    # ── Plymouth splash theme ─────────────────────────────────────────────
-    info "Installing Plymouth boot splash..."
-    local theme_dir="/usr/share/plymouth/themes/spoolbuddy"
-    mkdir -p "$theme_dir"
+    # ── fbi boot splash ──────────────────────────────────────────────────
+    info "Installing boot splash (fbi)..."
+    local splash_dir="/usr/share/spoolbuddy"
+    mkdir -p "$splash_dir"
 
     # Copy bundled splash image from the install directory
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [[ -f "$script_dir/splash.png" ]]; then
-        cp "$script_dir/splash.png" "$theme_dir/splash.png"
+        cp "$script_dir/splash.png" "$splash_dir/splash.png"
     elif [[ -f "$INSTALL_PATH/spoolbuddy/install/splash.png" ]]; then
-        cp "$INSTALL_PATH/spoolbuddy/install/splash.png" "$theme_dir/splash.png"
+        cp "$INSTALL_PATH/spoolbuddy/install/splash.png" "$splash_dir/splash.png"
     else
-        warn "splash.png not found — Plymouth splash will not display an image"
+        warn "splash.png not found — boot splash will not display an image"
     fi
 
-    # Write .plymouth theme file
-    cat > "$theme_dir/spoolbuddy.plymouth" << 'EOF'
-[Plymouth Theme]
-Name=SpoolBuddy
-Description=SpoolBuddy boot splash
-ModuleName=script
+    # Remove Plymouth if present (replaced by fbi)
+    if dpkg -l plymouth &>/dev/null; then
+        info "Removing Plymouth (replaced by lightweight fbi splash)..."
+        apt-get remove -y --purge plymouth plymouth-themes 2>/dev/null || true
+        update-initramfs -u 2>/dev/null || true
+    fi
 
-[script]
-ImageDir=/usr/share/plymouth/themes/spoolbuddy
-ScriptFile=/usr/share/plymouth/themes/spoolbuddy/spoolbuddy.script
+    # Create systemd service that shows splash image on tty1 during boot
+    cat > /etc/systemd/system/spoolbuddy-splash.service << 'EOF'
+[Unit]
+Description=SpoolBuddy Boot Splash
+DefaultDependencies=no
+After=local-fs.target
+Before=getty@tty1.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/fbi -T 1 -a --noverbose --norandom /usr/share/spoolbuddy/splash.png
+ExecStop=/usr/bin/killall -q fbi
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+
+[Install]
+WantedBy=sysinit.target
 EOF
 
-    # Write .script theme file
-    cat > "$theme_dir/spoolbuddy.script" << 'EOF'
-wallpaper_image = Image("splash.png");
-screen_width = Window.GetWidth();
-screen_height = Window.GetHeight();
-resized_wallpaper_image = wallpaper_image.Scale(screen_width, screen_height);
-wallpaper_sprite = Sprite(resized_wallpaper_image);
-wallpaper_sprite.SetZ(-100);
-EOF
-
-    plymouth-set-default-theme spoolbuddy
-    run_with_progress "Updating initramfs" update-initramfs -u
-    success "Plymouth splash installed"
+    systemctl daemon-reload
+    systemctl enable spoolbuddy-splash.service
+    success "Boot splash installed (fbi)"
 
     # ── Auto-login on tty1 ────────────────────────────────────────────────
     info "Configuring auto-login for $KIOSK_USER..."
@@ -1085,6 +1097,9 @@ EOF
 
         # ── labwc autostart ───────────────────────────────────────────────────
         cat > "$labwc_dir/autostart" << EOF
+# Kill fbi boot splash now that the compositor is running
+systemctl stop spoolbuddy-splash.service 2>/dev/null || killall -q fbi || true
+
 # Force 1024x600 (panel doesn't advertise this natively)
 wlr-randr --output HDMI-A-1 --custom-mode 1024x600@60 &
 
