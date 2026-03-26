@@ -233,32 +233,6 @@ export function SpoolBuddyAmsPage() {
     trayInfo: { type: string; material?: string; profile?: string; color: string; location: string };
   } | null>(null);
 
-  // Constrain assign-spool modal to viewport on small SpoolBuddy screen
-  useEffect(() => {
-    if (!assignSpoolModal) return;
-    const applyStyles = () => {
-      // The modal's panel is the only element with both 'relative' and 'max-w-2xl' classes inside a z-50 fixed overlay
-      const panels = document.querySelectorAll<HTMLElement>('.fixed .relative');
-      for (const panel of panels) {
-        if (!panel.classList.contains('w-full')) continue;
-        panel.style.maxHeight = '90vh';
-        panel.style.display = 'flex';
-        panel.style.flexDirection = 'column';
-        const children = Array.from(panel.children) as HTMLElement[];
-        if (children.length >= 3) {
-          children[0].style.flexShrink = '0';
-          children[1].style.flex = '1 1 0';
-          children[1].style.minHeight = '0';
-          children[1].style.overflowY = 'auto';
-          children[children.length - 1].style.flexShrink = '0';
-        }
-      }
-    };
-    // Run after React commit + browser paint
-    const raf = requestAnimationFrame(() => setTimeout(applyStyles, 0));
-    return () => cancelAnimationFrame(raf);
-  }, [assignSpoolModal]);
-
   // Link spool modal state (Spoolman)
   const [linkSpoolModal, setLinkSpoolModal] = useState<{
     tagUid: string;
