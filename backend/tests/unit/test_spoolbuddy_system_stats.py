@@ -1,5 +1,9 @@
 """Tests for SpoolBuddy daemon system_stats collector."""
 
+import pytest
+
+pytest.importorskip("spoolbuddy", reason="spoolbuddy package not available in Docker")
+
 from unittest.mock import patch
 
 from spoolbuddy.daemon.system_stats import (
