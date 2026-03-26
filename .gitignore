@@ -69,4 +69,5 @@ data/
 
 debug_logs/
 
+# SSH keys Spoolbuddy
 spoolbuddy/ssh/
