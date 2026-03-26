@@ -35,39 +35,15 @@ function assignmentLabel(a: SpoolAssignment): string {
   return formatSlotLabel(a.ams_id, a.tray_id, isHt, isExternal);
 }
 
-/* SVG spool icon — cylindrical spool with colored filament */
-function SpoolSvg({ color, size = 64 }: { color: string; size?: number }) {
-  // Determine if the color is very dark to add a subtle outline
-  const r = parseInt(color.slice(1, 3), 16) || 0;
-  const g = parseInt(color.slice(3, 5), 16) || 0;
-  const b = parseInt(color.slice(5, 7), 16) || 0;
-  const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-  const strokeColor = luma < 40 ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.2)';
-
+/* Spool circle — same style as AMS page tray slots */
+function SpoolCircle({ color, size = 56 }: { color: string; size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none">
-      {/* Spool flanges (gray side plates) */}
-      <ellipse cx="32" cy="14" rx="18" ry="6" fill="#555" stroke="#444" strokeWidth="0.5" />
-      <rect x="14" y="14" width="36" height="36" fill="#555" />
-      <ellipse cx="32" cy="50" rx="18" ry="6" fill="#4a4a4a" stroke="#444" strokeWidth="0.5" />
-
-      {/* Filament wrap (colored center) */}
-      <rect x="18" y="14" width="28" height="36" fill={color} />
-      <ellipse cx="32" cy="14" rx="14" ry="4.5" fill={color} />
-      <ellipse cx="32" cy="50" rx="14" ry="4.5" fill={color} style={{ filter: 'brightness(0.85)' }} />
-
-      {/* Highlight on filament */}
-      <rect x="18" y="14" width="8" height="36" fill="white" opacity="0.10" />
-      <ellipse cx="32" cy="14" rx="14" ry="4.5" fill="white" opacity="0.08" />
-
-      {/* Center hub (dark hole) */}
-      <ellipse cx="32" cy="32" rx="5" ry="14" fill="#333" stroke="#222" strokeWidth="0.5" />
-      <ellipse cx="32" cy="32" rx="3.5" ry="10" fill="#2a2a2a" />
-
-      {/* Top flange rim */}
-      <ellipse cx="32" cy="14" rx="18" ry="6" fill="none" stroke={strokeColor} strokeWidth="1" />
-      {/* Bottom flange rim */}
-      <ellipse cx="32" cy="50" rx="18" ry="6" fill="none" stroke={strokeColor} strokeWidth="1" />
+    <svg width={size} height={size} viewBox="0 0 56 56">
+      <circle cx="28" cy="28" r="26" fill={color} />
+      <circle cx="28" cy="28" r="20" fill={color} style={{ filter: 'brightness(0.85)' }} />
+      <ellipse cx="20" cy="20" rx="6" ry="4" fill="white" opacity="0.3" />
+      <circle cx="28" cy="28" r="8" fill="#2d2d2d" />
+      <circle cx="28" cy="28" r="5" fill="#1a1a1a" />
     </svg>
   );
 }
@@ -76,7 +52,7 @@ export function SpoolBuddyInventoryPage() {
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
-  const [selectedSpool, setSelectedSpool] = useState<InventorySpool | null>(null);
+  const [selectedSpoolId, setSelectedSpoolId] = useState<number | null>(null);
 
   const { data: spoolmanSettings } = useQuery({
     queryKey: ['spoolman-settings'],
@@ -95,21 +71,6 @@ export function SpoolBuddyInventoryPage() {
     queryFn: () => api.getAssignments(),
     refetchInterval: 30000,
   });
-
-  // Spoolman iframe mode
-  const spoolmanEnabled = spoolmanSettings?.spoolman_enabled === 'true' && spoolmanSettings?.spoolman_url;
-  if (spoolmanEnabled) {
-    return (
-      <div className="h-full flex flex-col">
-        <iframe
-          src={`${spoolmanSettings.spoolman_url.replace(/\/+$/, '')}/spool`}
-          className="flex-1 w-full border-0"
-          title="Spoolman"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
-        />
-      </div>
-    );
-  }
 
   // Build assignment lookup: spool_id → assignment
   const assignmentMap = useMemo(() => {
@@ -160,6 +121,21 @@ export function SpoolBuddyInventoryPage() {
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
   }, [activeSpools, filterMode, searchQuery, assignedSpoolIds]);
+
+  // Spoolman iframe mode
+  const spoolmanEnabled = spoolmanSettings?.spoolman_enabled === 'true' && spoolmanSettings?.spoolman_url;
+  if (spoolmanEnabled) {
+    return (
+      <div className="h-full flex flex-col">
+        <iframe
+          src={`${spoolmanSettings.spoolman_url.replace(/\/+$/, '')}/spool`}
+          className="flex-1 w-full border-0"
+          title="Spoolman"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -233,21 +209,25 @@ export function SpoolBuddyInventoryPage() {
                 key={spool.id}
                 spool={spool}
                 assignment={assignmentMap[spool.id]}
-                onClick={() => setSelectedSpool(spool)}
+                onClick={() => setSelectedSpoolId(spool.id)}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* Detail modal */}
-      {selectedSpool && (
-        <SpoolDetailModal
-          spool={selectedSpool}
-          assignment={assignmentMap[selectedSpool.id]}
-          onClose={() => setSelectedSpool(null)}
-        />
-      )}
+      {/* Detail modal — look up spool from live query data so it stays current */}
+      {selectedSpoolId != null && (() => {
+        const liveSpool = spools.find(s => s.id === selectedSpoolId);
+        if (!liveSpool) return null;
+        return (
+          <SpoolDetailModal
+            spool={liveSpool}
+            assignment={assignmentMap[liveSpool.id]}
+            onClose={() => setSelectedSpoolId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -262,7 +242,7 @@ function FilterPill({ active, onClick, label, green }: {
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1 rounded-full text-xs font-medium border whitespace-nowrap shrink-0 transition-colors ${
+      className={`px-4 py-1.5 rounded-full text-sm font-medium border whitespace-nowrap shrink-0 transition-colors ${
         active
           ? green
             ? 'bg-bambu-green/20 text-bambu-green border-bambu-green/50'
@@ -292,7 +272,7 @@ function CatalogCard({ spool, assignment, onClick }: {
       className="bg-bambu-dark-secondary rounded-xl p-3 flex flex-col items-center text-center gap-1.5 border border-transparent hover:border-bambu-green/50 transition-colors"
     >
       {/* Spool icon */}
-      <SpoolSvg color={color} size={56} />
+      <SpoolCircle color={color} size={56} />
 
       {/* Material + Subtype */}
       <p className="text-xs font-semibold text-white leading-tight truncate w-full">
@@ -310,10 +290,18 @@ function CatalogCard({ spool, assignment, onClick }: {
         </span>
       </div>
 
-      {/* Weight + pct */}
-      <p className="text-[11px] text-white/40">
-        {Math.round(remaining)}g ({Math.round(pct)}%)
-      </p>
+      {/* Fill bar + weight */}
+      <div className="w-full space-y-0.5">
+        <div className="h-1.5 bg-bambu-dark-tertiary rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full ${pct > 50 ? 'bg-bambu-green' : pct > 20 ? 'bg-yellow-500' : 'bg-red-500'}`}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+        <p className="text-[11px] text-white/40">
+          {Math.round(remaining)}g ({Math.round(pct)}%)
+        </p>
+      </div>
 
       {/* AMS location badge */}
       {assignment && (
@@ -338,16 +326,14 @@ function SpoolDetailModal({ spool, assignment, onClose }: {
   const colorName = resolveSpoolColorName(spool.color_name, spool.rgba);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60" />
-
+    <div className="fixed inset-0 z-50" onClick={onClose}>
       <div
-        className="relative w-full max-h-[85vh] bg-bambu-dark rounded-t-2xl overflow-y-auto"
+        className="h-full w-full bg-bambu-dark overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header with spool icon */}
         <div className="flex items-center gap-4 p-4 pb-3">
-          <SpoolSvg color={color} size={72} />
+          <SpoolCircle color={color} size={72} />
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-white">
               {spoolDisplayName(spool)}
@@ -365,15 +351,9 @@ function SpoolDetailModal({ spool, assignment, onClose }: {
               </span>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="self-start bg-bambu-dark-secondary hover:bg-bambu-dark-tertiary text-white/50 hover:text-white rounded-full p-1.5 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
-        <div className="px-4 pb-5 space-y-4">
+        <div className="px-4 pb-4 space-y-4">
           {/* Remaining bar */}
           <div>
             <div className="flex justify-between text-xs text-white/50 mb-1.5">
@@ -443,7 +423,32 @@ function SpoolDetailModal({ spool, assignment, onClose }: {
                 mono
               />
             )}
+            {(spool.slicer_filament_name || spool.slicer_filament) && (
+              <DetailItem
+                label={t('spoolbuddy.inventory.slicerFilament', 'Slicer Filament')}
+                value={spool.slicer_filament_name || spool.slicer_filament || ''}
+              />
+            )}
           </div>
+
+          {/* K-Profiles */}
+          {spool.k_profiles && spool.k_profiles.length > 0 && (
+            <div>
+              <p className="text-xs text-white/40 mb-1.5">{t('spoolbuddy.inventory.kProfiles', 'PA K-Profiles')}</p>
+              <div className="space-y-1">
+                {spool.k_profiles.map(kp => (
+                  <div key={kp.id} className="flex items-center justify-between bg-bambu-dark-secondary rounded-lg px-3 py-2">
+                    <span className="text-sm text-white/70 truncate">
+                      {kp.name || `${kp.nozzle_diameter}mm ${kp.nozzle_type || ''}`}
+                    </span>
+                    <span className="text-sm font-mono text-bambu-green shrink-0 ml-2">
+                      {kp.k_value.toFixed(3)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Note */}
           {spool.note && (
@@ -452,6 +457,14 @@ function SpoolDetailModal({ spool, assignment, onClose }: {
               <p className="text-sm text-white/70">{spool.note}</p>
             </div>
           )}
+
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="w-full py-3 rounded-xl bg-bambu-dark-secondary hover:bg-bambu-dark-tertiary text-white/60 hover:text-white text-sm font-medium transition-colors"
+          >
+            {t('spoolbuddy.inventory.close', 'Close')}
+          </button>
         </div>
       </div>
     </div>
