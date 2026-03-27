@@ -895,6 +895,10 @@ strip_packages() {
         cups-client
         rpcbind
         upower
+        # Replaced by cog (WPE WebKit) for kiosk
+        chromium
+        chromium-common
+        chromium-sandbox
     )
 
     local to_remove=()
@@ -1106,6 +1110,9 @@ EOF
 
 </labwc_config>
 EOF
+
+        # Clean up legacy Chromium kiosk config if present
+        rm -f /etc/chromium.d/spoolbuddy-kiosk 2>/dev/null || true
 
         # ── kiosk launcher (dynamic URL from spoolbuddy/.env) ─────────────────
         # Uses cog (WPE WebKit) — purpose-built for embedded kiosk displays.
