@@ -839,16 +839,33 @@ async def scan_external_folder(
             if file_type == "3mf":
                 try:
                     parser = ThreeMFParser(str(filepath))
-                    meta = parser.parse()
-                    if meta:
-                        file_metadata = meta
-                    thumb_data = parser.extract_thumbnail()
-                    if thumb_data:
-                        thumb_dir = get_library_thumbnails_dir()
-                        thumb_filename = f"{uuid.uuid4().hex}.png"
-                        thumb_full = thumb_dir / thumb_filename
-                        thumb_full.write_bytes(thumb_data)
-                        thumbnail_path = to_relative_path(thumb_full)
+                    raw_metadata = parser.parse()
+                    if raw_metadata:
+                        # Extract thumbnail before cleaning metadata
+                        thumb_data = raw_metadata.get("_thumbnail_data")
+                        thumbnail_ext = raw_metadata.get("_thumbnail_ext", ".png")
+                        if thumb_data:
+                            thumb_dir = get_library_thumbnails_dir()
+                            thumb_filename = f"{uuid.uuid4().hex}{thumbnail_ext}"
+                            thumb_full = thumb_dir / thumb_filename
+                            thumb_full.write_bytes(thumb_data)
+                            thumbnail_path = to_relative_path(thumb_full)
+
+                        # Clean metadata - remove non-JSON-serializable data (bytes, etc.)
+                        def clean_metadata(obj):
+                            if isinstance(obj, dict):
+                                return {
+                                    k: clean_metadata(v)
+                                    for k, v in obj.items()
+                                    if not isinstance(v, bytes) and k not in ("_thumbnail_data", "_thumbnail_ext")
+                                }
+                            elif isinstance(obj, list):
+                                return [clean_metadata(i) for i in obj if not isinstance(i, bytes)]
+                            elif isinstance(obj, bytes):
+                                return None
+                            return obj
+
+                        file_metadata = clean_metadata(raw_metadata)
                 except Exception as e:
                     logger.debug("Failed to extract metadata from external 3mf %s: %s", filepath, e)
 
