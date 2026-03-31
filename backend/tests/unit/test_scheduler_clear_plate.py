@@ -122,6 +122,44 @@ class TestSchedulerIdleCheckWithPlateCleared:
         mock_pm.get_status.return_value = None
         assert scheduler._is_printer_idle(1) is False
 
+    @patch("backend.app.services.print_scheduler.printer_manager")
+    def test_finish_state_idle_when_require_plate_clear_disabled(self, mock_pm, scheduler):
+        """FINISH state should be idle when require_plate_clear=False, regardless of plate cleared."""
+        mock_pm.is_connected.return_value = True
+        mock_pm.get_status.return_value = MagicMock(state="FINISH")
+        mock_pm.is_plate_cleared.return_value = False
+        assert scheduler._is_printer_idle(1, require_plate_clear=False) is True
+
+    @patch("backend.app.services.print_scheduler.printer_manager")
+    def test_failed_state_idle_when_require_plate_clear_disabled(self, mock_pm, scheduler):
+        """FAILED state should be idle when require_plate_clear=False."""
+        mock_pm.is_connected.return_value = True
+        mock_pm.get_status.return_value = MagicMock(state="FAILED")
+        mock_pm.is_plate_cleared.return_value = False
+        assert scheduler._is_printer_idle(1, require_plate_clear=False) is True
+
+    @patch("backend.app.services.print_scheduler.printer_manager")
+    def test_running_state_not_idle_even_when_require_plate_clear_disabled(self, mock_pm, scheduler):
+        """RUNNING state should NOT be idle even with require_plate_clear=False."""
+        mock_pm.is_connected.return_value = True
+        mock_pm.get_status.return_value = MagicMock(state="RUNNING")
+        assert scheduler._is_printer_idle(1, require_plate_clear=False) is False
+
+    @patch("backend.app.services.print_scheduler.printer_manager")
+    def test_idle_state_unaffected_by_require_plate_clear(self, mock_pm, scheduler):
+        """IDLE state should always be idle regardless of require_plate_clear."""
+        mock_pm.is_connected.return_value = True
+        mock_pm.get_status.return_value = MagicMock(state="IDLE")
+        assert scheduler._is_printer_idle(1, require_plate_clear=False) is True
+
+    @patch("backend.app.services.print_scheduler.printer_manager")
+    def test_finish_state_still_needs_plate_cleared_when_setting_enabled(self, mock_pm, scheduler):
+        """FINISH + require_plate_clear=True + plate not cleared → NOT idle (default behavior)."""
+        mock_pm.is_connected.return_value = True
+        mock_pm.get_status.return_value = MagicMock(state="FINISH")
+        mock_pm.is_plate_cleared.return_value = False
+        assert scheduler._is_printer_idle(1, require_plate_clear=True) is False
+
 
 class TestSchedulerQueueCheckLogging:
     """Test queue check logging when pending items are found (#374)."""

@@ -772,7 +772,8 @@ export function SettingsPage() {
       settings.prometheus_token !== localSettings.prometheus_token ||
       (settings.user_notifications_enabled ?? true) !== (localSettings.user_notifications_enabled ?? true) ||
       (settings.stagger_group_size ?? 2) !== (localSettings.stagger_group_size ?? 2) ||
-      (settings.stagger_interval_minutes ?? 5) !== (localSettings.stagger_interval_minutes ?? 5);
+      (settings.stagger_interval_minutes ?? 5) !== (localSettings.stagger_interval_minutes ?? 5) ||
+      (settings.require_plate_clear ?? true) !== (localSettings.require_plate_clear ?? true);
 
     if (!hasChanges) {
       return;
@@ -847,6 +848,7 @@ export function SettingsPage() {
         user_notifications_enabled: localSettings.user_notifications_enabled,
         stagger_group_size: localSettings.stagger_group_size,
         stagger_interval_minutes: localSettings.stagger_interval_minutes,
+        require_plate_clear: localSettings.require_plate_clear,
       };
       updateMutation.mutate(settingsToSave);
     }, 500);
@@ -3382,6 +3384,37 @@ export function SettingsPage() {
                     {t('settings.staggerIntervalHelp', 'Delay between each group starting')}
                   </p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Plate-Clear Confirmation */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <Shield className="w-4 h-4 text-bambu-green" />
+                {t('settings.plateClear', 'Plate-Clear Confirmation')}
+              </h3>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 mr-4">
+                  <p className="text-sm text-white">
+                    {t('settings.requirePlateClear', 'Require plate-clear confirmation')}
+                  </p>
+                  <p className="text-xs text-bambu-gray mt-1">
+                    {t('settings.requirePlateClearDescription', 'When enabled, the scheduler waits for per-printer plate-clear confirmation before starting queued prints on printers with finished jobs. Disable for farm workflows where plates are verified physically.')}
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSettings.require_plate_clear ?? true}
+                    onChange={(e) => updateSetting('require_plate_clear', e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-bambu-dark-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-bambu-green"></div>
+                </label>
               </div>
             </CardContent>
           </Card>

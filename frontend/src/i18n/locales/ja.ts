@@ -1547,6 +1547,9 @@ export default {
     historyRetentionDescription: '古い湿度と温度データは自動的に削除されます',
     staggeredStart: 'Staggered Start',
     staggeredStartDescription: 'Default group size and interval when staggering multi-printer batch starts. Can be overridden per batch in the print modal.',
+    plateClear: 'プレートクリア確認',
+    requirePlateClear: 'プレートクリア確認を必須にする',
+    requirePlateClearDescription: '有効にすると、スケジューラーは完了したプリンターでキューの印刷を開始する前に、プリンターごとのプレートクリア確認を待ちます。プレートを物理的に確認するファームワークフローでは無効にしてください。',
     staggerGroupSize: 'Group size',
     staggerGroupSizeHelp: 'Printers to start simultaneously per group',
     staggerInterval: 'Interval (minutes)',
@@ -3156,6 +3159,7 @@ export default {
     staggerPreview: '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min',
     staggerLastGroup: 'last group: {{count}}',
     staggerTotal: 'total: {{minutes}} min',
+    staggerToPrinters: '{{count}}台のプリンターに段階的に送信',
   },
 
   // Backup

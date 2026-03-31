@@ -757,7 +757,7 @@ describe('PrintModal', () => {
       });
     });
 
-    it('does not show stagger option in reprint mode', async () => {
+    it('shows stagger option in reprint mode with multiple printers', async () => {
       const user = userEvent.setup();
       render(
         <PrintModal
@@ -777,6 +777,56 @@ describe('PrintModal', () => {
       await waitFor(() => {
         expect(screen.getByText(/2 printers selected|3 printers selected/)).toBeInTheDocument();
       });
+
+      expect(screen.getByText('Stagger printer starts')).toBeInTheDocument();
+    });
+
+    it('shows stagger preview in reprint mode when enabled', async () => {
+      const user = userEvent.setup();
+      render(
+        <PrintModal
+          mode="reprint"
+          archiveId={1}
+          archiveName="Test Print"
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Select all')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Select all'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Stagger printer starts')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByLabelText('Stagger printer starts'));
+
+      await waitFor(() => {
+        // Default: 3 printers, group size 2 = 2 groups — preview text shown
+        expect(screen.getByText(/3 printers.*2 groups/)).toBeInTheDocument();
+      });
+    });
+
+    it('does not show stagger option in reprint mode with single printer', async () => {
+      const user = userEvent.setup();
+      render(
+        <PrintModal
+          mode="reprint"
+          archiveId={1}
+          archiveName="Test Print"
+          onClose={mockOnClose}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('X1 Carbon')).toBeInTheDocument();
+      });
+
+      // Select only one printer
+      await user.click(screen.getByText('X1 Carbon'));
 
       expect(screen.queryByText('Stagger printer starts')).not.toBeInTheDocument();
     });

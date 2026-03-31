@@ -194,6 +194,12 @@ class AppSettings(BaseModel):
         default=5, ge=1, le=60, description="Minutes between staggered printer groups"
     )
 
+    # Plate-clear confirmation for queue scheduling
+    require_plate_clear: bool = Field(
+        default=True,
+        description="Require per-printer plate-clear confirmation before starting queued prints on finished printers",
+    )
+
     # Default sidebar order (admin-set for all users)
     default_sidebar_order: str = Field(
         default="",
@@ -270,6 +276,7 @@ class AppSettingsUpdate(BaseModel):
     user_notifications_enabled: bool | None = None
     stagger_group_size: int | None = Field(default=None, ge=1, le=50)
     stagger_interval_minutes: int | None = Field(default=None, ge=1, le=60)
+    require_plate_clear: bool | None = None
     default_sidebar_order: str | None = None
 
     @field_validator("default_sidebar_order")

@@ -1548,6 +1548,9 @@ export default {
     historyRetentionDescription: 'Ältere Feuchtigkeits- und Temperaturdaten werden automatisch gelöscht',
     staggeredStart: 'Staggered Start',
     staggeredStartDescription: 'Default group size and interval when staggering multi-printer batch starts. Can be overridden per batch in the print modal.',
+    plateClear: 'Druckplatte-Bestätigung',
+    requirePlateClear: 'Druckplatte-Bestätigung erforderlich',
+    requirePlateClearDescription: 'Wenn aktiviert, wartet der Scheduler auf eine Druckplatte-Bestätigung pro Drucker, bevor geplante Drucke auf Druckern mit abgeschlossenen Aufträgen gestartet werden. Deaktivieren Sie dies für Farm-Workflows, bei denen die Platten physisch überprüft werden.',
     staggerGroupSize: 'Group size',
     staggerGroupSizeHelp: 'Printers to start simultaneously per group',
     staggerInterval: 'Interval (minutes)',
@@ -3153,6 +3156,7 @@ export default {
     staggerPreview: '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min',
     staggerLastGroup: 'last group: {{count}}',
     staggerTotal: 'total: {{minutes}} min',
+    staggerToPrinters: 'Gestaffelt an {{count}} Drucker senden',
   },
 
   // Backup

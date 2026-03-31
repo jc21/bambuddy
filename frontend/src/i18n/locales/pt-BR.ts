@@ -1548,6 +1548,9 @@ export default {
     historyRetentionDescription: 'Dados antigos de umidade e temperatura serão automaticamente excluídos',
     staggeredStart: 'Staggered Start',
     staggeredStartDescription: 'Default group size and interval when staggering multi-printer batch starts. Can be overridden per batch in the print modal.',
+    plateClear: 'Confirmação de placa livre',
+    requirePlateClear: 'Exigir confirmação de placa livre',
+    requirePlateClearDescription: 'Quando ativado, o agendador aguarda a confirmação de placa livre por impressora antes de iniciar impressões na fila em impressoras com trabalhos concluídos. Desative para fluxos de trabalho de fazenda onde as placas são verificadas fisicamente.',
     staggerGroupSize: 'Group size',
     staggerGroupSizeHelp: 'Printers to start simultaneously per group',
     staggerInterval: 'Interval (minutes)',
@@ -3143,6 +3146,7 @@ export default {
     staggerPreview: '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min',
     staggerLastGroup: 'last group: {{count}}',
     staggerTotal: 'total: {{minutes}} min',
+    staggerToPrinters: 'Escalonar para {{count}} impressoras',
   },
 
   // Backup

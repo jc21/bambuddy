@@ -1548,6 +1548,9 @@ export default {
     historyRetentionDescription: 'Les anciennes données seront supprimées.',
     staggeredStart: 'Staggered Start',
     staggeredStartDescription: 'Default group size and interval when staggering multi-printer batch starts. Can be overridden per batch in the print modal.',
+    plateClear: 'Confirmation de plateau libre',
+    requirePlateClear: 'Exiger la confirmation de plateau libre',
+    requirePlateClearDescription: 'Lorsque activé, le planificateur attend la confirmation de plateau libre par imprimante avant de lancer les impressions en file d\'attente sur les imprimantes ayant terminé. Désactivez pour les workflows de ferme où les plateaux sont vérifiés physiquement.',
     staggerGroupSize: 'Group size',
     staggerGroupSizeHelp: 'Printers to start simultaneously per group',
     staggerInterval: 'Interval (minutes)',
@@ -3144,6 +3147,7 @@ export default {
     staggerPreview: '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min',
     staggerLastGroup: 'last group: {{count}}',
     staggerTotal: 'total: {{minutes}} min',
+    staggerToPrinters: 'Échelonner sur {{count}} imprimantes',
   },
 
   // Backup

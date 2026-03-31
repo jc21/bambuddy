@@ -1548,6 +1548,9 @@ export default {
     historyRetentionDescription: '较旧的湿度和温度数据将被自动删除',
     staggeredStart: 'Staggered Start',
     staggeredStartDescription: 'Default group size and interval when staggering multi-printer batch starts. Can be overridden per batch in the print modal.',
+    plateClear: '热床清空确认',
+    requirePlateClear: '需要热床清空确认',
+    requirePlateClearDescription: '启用后，调度器会在已完成打印的打印机上启动排队打印之前，等待每台打印机的热床清空确认。对于物理验证热床的农场工作流，请禁用此选项。',
     staggerGroupSize: 'Group size',
     staggerGroupSizeHelp: 'Printers to start simultaneously per group',
     staggerInterval: 'Interval (minutes)',
@@ -3143,6 +3146,7 @@ export default {
     staggerPreview: '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min',
     staggerLastGroup: 'last group: {{count}}',
     staggerTotal: 'total: {{minutes}} min',
+    staggerToPrinters: '分批发送到 {{count}} 台打印机',
   },
 
   // Backup

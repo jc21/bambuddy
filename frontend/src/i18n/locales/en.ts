@@ -1548,6 +1548,9 @@ export default {
     historyRetentionDescription: 'Older humidity and temperature data will be automatically deleted',
     staggeredStart: 'Staggered Start',
     staggeredStartDescription: 'Default group size and interval when staggering multi-printer batch starts. Can be overridden per batch in the print modal.',
+    plateClear: 'Plate-Clear Confirmation',
+    requirePlateClear: 'Require plate-clear confirmation',
+    requirePlateClearDescription: 'When enabled, the scheduler waits for per-printer plate-clear confirmation before starting queued prints on printers with finished jobs. Disable for farm workflows where plates are verified physically.',
     staggerGroupSize: 'Group size',
     staggerGroupSizeHelp: 'Printers to start simultaneously per group',
     staggerInterval: 'Interval (minutes)',
@@ -3157,6 +3160,7 @@ export default {
     staggerPreview: '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min',
     staggerLastGroup: 'last group: {{count}}',
     staggerTotal: 'total: {{minutes}} min',
+    staggerToPrinters: 'Stagger to {{count}} printers',
   },
 
   // Backup

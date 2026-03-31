@@ -1548,6 +1548,9 @@ export default {
     historyRetentionDescription: 'I dati più vecchi saranno eliminati automaticamente',
     staggeredStart: 'Staggered Start',
     staggeredStartDescription: 'Default group size and interval when staggering multi-printer batch starts. Can be overridden per batch in the print modal.',
+    plateClear: 'Conferma piatto libero',
+    requirePlateClear: 'Richiedi conferma piatto libero',
+    requirePlateClearDescription: 'Quando abilitato, lo scheduler attende la conferma per stampante che il piatto è libero prima di avviare le stampe in coda su stampanti con lavori completati. Disabilitare per flussi di lavoro in farm dove i piatti vengono verificati fisicamente.',
     staggerGroupSize: 'Group size',
     staggerGroupSizeHelp: 'Printers to start simultaneously per group',
     staggerInterval: 'Interval (minutes)',
@@ -3143,6 +3146,7 @@ export default {
     staggerPreview: '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min',
     staggerLastGroup: 'last group: {{count}}',
     staggerTotal: 'total: {{minutes}} min',
+    staggerToPrinters: 'Scagliona a {{count}} stampanti',
   },
 
   // Backup

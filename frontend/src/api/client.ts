@@ -889,6 +889,8 @@ export interface AppSettings {
   // Staggered batch start defaults
   stagger_group_size: number;
   stagger_interval_minutes: number;
+  // Plate-clear confirmation
+  require_plate_clear: boolean;
   // Default sidebar order (admin-set for all users)
   default_sidebar_order: string;
 }

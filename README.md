@@ -106,14 +106,14 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - **Background print dispatch** — FTP uploads and print-start commands run in the background with real-time WebSocket progress toasts (per-job upload bars, status badges, cancel button)
 - Print queue with drag-and-drop and timeline schedule view
 - Multi-printer selection (send to multiple printers at once)
-- Staggered batch start (start printers in groups with configurable interval to avoid power spikes)
+- Staggered batch start (start printers in groups with configurable interval to avoid power spikes — works in both Print and Queue dialogs)
 - Model-based queue assignment (send to "any X1C" for load balancing) with location filtering
 - Filament override for model-based queue (swap filament colors/types before scheduling)
 - Filament validation (only assign to printers with required filaments)
 - Per-printer AMS mapping (individual slot configuration for print farms)
 - Scheduled prints (date/time)
 - Queue Only mode (stage without auto-start)
-- Clear plate confirmation between queued prints
+- Clear plate confirmation between queued prints (can be disabled in settings for farm workflows)
 - Smart plug integration (Tasmota, Home Assistant, MQTT)
 - MQTT smart plugs: Subscribe to Zigbee2MQTT, Shelly, or any MQTT topic for energy monitoring
 - Energy consumption tracking (per-print kWh and cost)

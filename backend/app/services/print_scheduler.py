@@ -101,9 +101,12 @@ class PrintScheduler:
             )
             items = list(result.scalars().all())
 
+            # Read plate-clear setting once per queue check
+            require_plate_clear = await self._get_bool_setting(db, "require_plate_clear", default=True)
+
             if not items:
                 # No pending items — still check auto-drying on idle printers
-                await self._check_auto_drying(db, [], set())
+                await self._check_auto_drying(db, [], set(), require_plate_clear=require_plate_clear)
                 return
 
             logger.info(
@@ -139,7 +142,7 @@ class PrintScheduler:
                         continue
 
                     # Check if printer is idle
-                    printer_idle = self._is_printer_idle(item.printer_id)
+                    printer_idle = self._is_printer_idle(item.printer_id, require_plate_clear)
                     printer_connected = printer_manager.is_connected(item.printer_id)
 
                     # If printer not connected, try to power on via smart plug
@@ -150,7 +153,7 @@ class PrintScheduler:
                             powered_on = await self._power_on_and_wait(plug, item.printer_id, db)
                             if powered_on:
                                 printer_connected = True
-                                printer_idle = self._is_printer_idle(item.printer_id)
+                                printer_idle = self._is_printer_idle(item.printer_id, require_plate_clear)
                             else:
                                 logger.warning("Could not power on printer %s via smart plug", item.printer_id)
                                 busy_printers.add(item.printer_id)
@@ -173,7 +176,7 @@ class PrintScheduler:
                                 # Print takes priority — stop drying
                                 await self._stop_drying(item.printer_id)
                                 # Re-check idle after stopping drying
-                                printer_idle = self._is_printer_idle(item.printer_id)
+                                printer_idle = self._is_printer_idle(item.printer_id, require_plate_clear)
                                 if not printer_idle:
                                     busy_printers.add(item.printer_id)
                                     continue
@@ -249,6 +252,7 @@ class PrintScheduler:
                         effective_types,
                         item.target_location,
                         filament_overrides=filament_overrides,
+                        require_plate_clear=require_plate_clear,
                     )
 
                     # Update waiting_reason if changed and send notification when first waiting
@@ -339,7 +343,7 @@ class PrintScheduler:
                     )
 
             # Auto-drying: start drying on idle printers that have no pending queue items
-            await self._check_auto_drying(db, items, busy_printers)
+            await self._check_auto_drying(db, items, busy_printers, require_plate_clear=require_plate_clear)
 
     async def _find_idle_printer_for_model(
         self,
@@ -349,6 +353,7 @@ class PrintScheduler:
         required_filament_types: list[str] | None = None,
         target_location: str | None = None,
         filament_overrides: list[dict] | None = None,
+        require_plate_clear: bool = True,
     ) -> tuple[int | None, str | None]:
         """Find an idle, connected printer matching the model with compatible filaments.
 
@@ -413,7 +418,7 @@ class PrintScheduler:
                 continue
 
             is_connected = printer_manager.is_connected(printer.id)
-            is_idle = self._is_printer_idle(printer.id) if is_connected else False
+            is_idle = self._is_printer_idle(printer.id, require_plate_clear) if is_connected else False
 
             if not is_connected:
                 printers_offline.append(printer.name)
@@ -1021,7 +1026,7 @@ class PrintScheduler:
 
         return mapping
 
-    def _is_printer_idle(self, printer_id: int) -> bool:
+    def _is_printer_idle(self, printer_id: int, require_plate_clear: bool = True) -> bool:
         """Check if a printer is connected and idle."""
         if not printer_manager.is_connected(printer_id):
             logger.debug("Printer %d: not connected", printer_id)
@@ -1033,9 +1038,10 @@ class PrintScheduler:
             return False
 
         # IDLE = ready for next print
-        # FINISH/FAILED = ready only if user confirmed plate is cleared
+        # FINISH/FAILED = ready if plate-clear not required, or user confirmed plate is cleared
         idle = state.state == "IDLE" or (
-            state.state in ("FINISH", "FAILED") and printer_manager.is_plate_cleared(printer_id)
+            state.state in ("FINISH", "FAILED")
+            and (not require_plate_clear or printer_manager.is_plate_cleared(printer_id))
         )
         if not idle:
             logger.debug(
@@ -1106,7 +1112,14 @@ class PrintScheduler:
             return None
         return (min_temp, max_hours or 12, filament_type)
 
-    async def _check_auto_drying(self, db: AsyncSession, queue_items: list[PrintQueueItem], busy_printers: set[int]):
+    async def _check_auto_drying(
+        self,
+        db: AsyncSession,
+        queue_items: list[PrintQueueItem],
+        busy_printers: set[int],
+        *,
+        require_plate_clear: bool = True,
+    ):
         """Start drying on idle printers based on humidity.
 
         Two modes (can both be enabled):
@@ -1175,7 +1188,7 @@ class PrintScheduler:
             if not printer_manager.is_connected(pid):
                 logger.debug("Auto-drying: printer %d skipped — not connected", pid)
                 continue
-            if not self._is_printer_idle(pid):
+            if not self._is_printer_idle(pid, require_plate_clear):
                 logger.debug("Auto-drying: printer %d skipped — not idle", pid)
                 continue
 

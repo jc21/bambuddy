@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, AlertTriangle, Calendar, Loader2, Pencil, Printer, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Calendar, Layers, Loader2, Pencil, Printer, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PrintQueueItemCreate, PrintQueueItemUpdate, SpoolAssignment } from '../../api/client';
@@ -478,6 +478,8 @@ export function PrintModal({
     },
   });
 
+  const willUseStagger = scheduleOptions.staggerEnabled && selectedPrinters.length > 1;
+
   const handleSubmit = async (e?: React.FormEvent, options?: { skipFilamentCheck?: boolean }) => {
     e?.preventDefault();
 
@@ -682,7 +684,7 @@ export function PrintModal({
       // Printer-based assignment: loop through plates × printers
       // Compute stagger base time once before the loop
       const useStagger = scheduleOptions.staggerEnabled
-        && mode === 'add-to-queue'
+        && (mode === 'add-to-queue' || mode === 'reprint')
         && selectedPrinters.length > 1;
       const staggerBaseTime = useStagger
         ? (scheduleOptions.scheduleType === 'scheduled' && scheduleOptions.scheduledTime
@@ -700,7 +702,7 @@ export function PrintModal({
           setSubmitProgress({ current: progressCounter, total: totalCount });
 
           try {
-            if (mode === 'reprint') {
+            if (mode === 'reprint' && !useStagger) {
               // Reprint mode - start print immediately (single plate only, multi-select not available)
               const printerMapping = getMappingForPrinter(printerId);
               if (isLibraryFile) {
@@ -737,7 +739,7 @@ export function PrintModal({
               };
               await updateQueueMutation.mutateAsync(updateData);
             } else {
-              // Add-to-queue mode OR edit mode with additional entries
+              // Add-to-queue mode, stagger-reprint mode, or edit mode with additional entries
               const queueData = getQueueData(printerId, plateId);
               // Apply stagger offset for groups after the first
               if (useStagger) {
@@ -765,9 +767,12 @@ export function PrintModal({
 
     setIsSubmitting(false);
 
-    // Show result toast (skip for reprint mode — the dispatch toast handles it)
+    // Show result toast (skip for direct reprint — the dispatch toast handles it)
     if (results.failed === 0) {
-      if (mode !== 'reprint') {
+      if (mode === 'reprint' && willUseStagger) {
+        // Stagger-reprint routed through queue
+        showToast(t('queue.itemsQueued', { count: results.success }));
+      } else if (mode !== 'reprint') {
         if (mode === 'edit-queue-item') {
           showToast('Queue item updated');
         } else if (results.success === 1) {
@@ -810,11 +815,14 @@ export function PrintModal({
     const printerCount = selectedPrinters.length;
 
     if (mode === 'reprint') {
+      const staggerReprint = willUseStagger && printerCount > 1;
       return {
         title: isLibraryFile ? t('queue.print') : t('queue.reprint'),
         icon: Printer,
-        submitText: printerCount > 1 ? t('queue.printToPrinters', { count: printerCount }) : t('queue.print'),
-        submitIcon: Printer,
+        submitText: staggerReprint
+          ? t('printModal.staggerToPrinters', { count: printerCount, defaultValue: 'Stagger to {{count}} printers' })
+          : printerCount > 1 ? t('queue.printToPrinters', { count: printerCount }) : t('queue.print'),
+        submitIcon: staggerReprint ? Calendar : Printer,
         loadingText: submitProgress.total > 1
           ? t('queue.sendingProgress', { current: submitProgress.current, total: submitProgress.total })
           : t('queue.sending'),
@@ -1012,6 +1020,44 @@ export function PrintModal({
             {/* Print options */}
             {(mode === 'reprint' || effectivePrinterCount > 0 || (assignmentMode === 'model' && targetModel)) && (
               <PrintOptionsPanel options={printOptions} onChange={setPrintOptions} defaultExpanded={!!initialSelectedPrinterIds?.length} />
+            )}
+
+            {/* Stagger option for reprint mode with multiple printers */}
+            {mode === 'reprint' && assignmentMode === 'printer' && selectedPrinters.length > 1 && (
+              <div className="space-y-2 pb-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="staggerEnabledReprint"
+                    checked={scheduleOptions.staggerEnabled}
+                    onChange={(e) => setScheduleOptions({ ...scheduleOptions, staggerEnabled: e.target.checked })}
+                    className="rounded border-bambu-dark-tertiary bg-bambu-dark text-bambu-green focus:ring-bambu-green"
+                  />
+                  <label htmlFor="staggerEnabledReprint" className="text-sm flex items-center gap-1 text-bambu-gray">
+                    <Layers className="w-3.5 h-3.5" />
+                    {t('printModal.staggerPrinterStarts', 'Stagger printer starts')}
+                  </label>
+                </div>
+                {scheduleOptions.staggerEnabled && (() => {
+                  const groupSize = scheduleOptions.staggerGroupSize;
+                  const interval = scheduleOptions.staggerIntervalMinutes;
+                  const groupCount = Math.ceil(selectedPrinters.length / groupSize);
+                  const totalMinutes = (groupCount - 1) * interval;
+                  return (
+                    <p className="ml-6 text-xs text-bambu-gray">
+                      {t('printModal.staggerPreview', '{{printers}} printers → {{groups}} groups of {{size}}, starting every {{interval}} min', {
+                        printers: selectedPrinters.length,
+                        groups: groupCount,
+                        size: groupSize,
+                        interval,
+                      })}
+                      {groupCount > 1
+                        ? ` (${t('printModal.staggerTotal', 'total: {{minutes}} min', { minutes: totalMinutes })})`
+                        : ''}
+                    </p>
+                  );
+                })()}
+              </div>
             )}
 
             {/* Schedule options - only for queue modes */}
