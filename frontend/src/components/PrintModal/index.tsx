@@ -324,7 +324,7 @@ export function PrintModal({
   });
 
   // Get AMS mapping from hook (only when single printer selected)
-  const { amsMapping } = useFilamentMapping(effectiveFilamentReqs, printerStatus, manualMappings);
+  const { amsMapping } = useFilamentMapping(effectiveFilamentReqs, printerStatus, manualMappings, settings?.prefer_lowest_filament);
 
   // Multi-printer filament mapping (for per-printer configuration)
   const multiPrinterMapping = useMultiPrinterFilamentMapping(
@@ -333,7 +333,8 @@ export function PrintModal({
     effectiveFilamentReqs,
     manualMappings,
     perPrinterConfigs,
-    setPerPrinterConfigs
+    setPerPrinterConfigs,
+    settings?.prefer_lowest_filament,
   );
 
   // Auto-select first plate when plates load (single or multi-plate)

@@ -1419,6 +1419,8 @@ export default {
     filamentChecks: '耗材检查',
     disableFilamentWarnings: '禁用耗材警告',
     disableFilamentWarningsDesc: '在打印或加入队列时不显示耗材不足警告',
+    preferLowestFilament: '优先使用剩余最少的耗材',
+    preferLowestFilamentDesc: '当多个料盘匹配时，使用剩余耗材最少的那个',
     trackingModeBuiltIn: '内置库存',
     trackingModeBuiltInDesc: '包含 RFID 自动匹配和用量追踪',
     trackingModeSpoolmanDesc: '外部耗材管理服务器',

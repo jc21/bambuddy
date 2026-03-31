@@ -112,6 +112,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Model-based queue assignment (send to "any X1C" for load balancing) with location filtering
 - Filament override for model-based queue (swap filament colors/types before scheduling)
 - Filament validation (only assign to printers with required filaments)
+- Prefer lowest remaining filament (consume partial spools first when multiple match)
 - Per-printer AMS mapping (individual slot configuration for print farms)
 - Scheduled prints (date/time)
 - Queue Only mode (stage without auto-start)

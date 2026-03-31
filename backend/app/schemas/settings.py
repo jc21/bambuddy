@@ -37,6 +37,10 @@ class AppSettings(BaseModel):
         default=False,
         description="Disable insufficient filament warnings when printing or queueing prints",
     )
+    prefer_lowest_filament: bool = Field(
+        default=False,
+        description="When multiple AMS spools match, prefer the one with lowest remaining filament",
+    )
 
     # Updates
     check_updates: bool = Field(default=True, description="Automatically check for updates on startup")
@@ -223,6 +227,7 @@ class AppSettingsUpdate(BaseModel):
     spoolman_disable_weight_sync: bool | None = None
     spoolman_report_partial_usage: bool | None = None
     disable_filament_warnings: bool | None = None
+    prefer_lowest_filament: bool | None = None
     check_updates: bool | None = None
     check_printer_firmware: bool | None = None
     include_beta_updates: bool | None = None

@@ -1418,6 +1418,8 @@ export default {
     filamentChecks: 'フィラメントチェック',
     disableFilamentWarnings: 'フィラメント警告を無効化',
     disableFilamentWarningsDesc: '印刷またはキュー追加時にフィラメント不足の警告を表示しない',
+    preferLowestFilament: '残量が少ないフィラメントを優先',
+    preferLowestFilamentDesc: '複数のスプールが一致する場合、残量が最も少ないものを使用します',
     trackingModeBuiltIn: '内蔵インベントリ',
     trackingModeBuiltInDesc: 'RFID自動検出と使用量追跡を含む',
     trackingModeSpoolmanDesc: '外部フィラメント管理サーバー',

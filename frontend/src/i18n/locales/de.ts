@@ -1419,6 +1419,8 @@ export default {
     filamentChecks: 'Filament-Prüfungen',
     disableFilamentWarnings: 'Filament-Warnungen deaktivieren',
     disableFilamentWarningsDesc: 'Keine Warnungen über unzureichendes Filament beim Drucken oder Einreihen anzeigen',
+    preferLowestFilament: 'Niedrigsten Filamentrest bevorzugen',
+    preferLowestFilamentDesc: 'Bei mehreren passenden Spulen die mit dem geringsten Restfilament verwenden',
     trackingModeBuiltIn: 'Integriertes Inventar',
     trackingModeBuiltInDesc: 'RFID-Erkennung und Verbrauchserfassung inklusive',
     trackingModeSpoolmanDesc: 'Externer Filament-Management-Server',

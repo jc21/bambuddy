@@ -838,6 +838,7 @@ export interface AppSettings {
   time_format: 'system' | '12h' | '24h';
   // Filament tracking
   disable_filament_warnings: boolean;  // Disable filament warnings (print insufficiency and assignment mismatch)
+  prefer_lowest_filament: boolean;  // When multiple spools match, prefer lowest remaining filament
   // Default printer
   default_printer_id: number | null;
   // Dark mode theme settings

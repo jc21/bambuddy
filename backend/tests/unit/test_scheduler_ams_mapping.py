@@ -415,6 +415,96 @@ class TestMatchFilamentsToSlots:
         assert result == [-1, 3]
 
 
+class TestPreferLowestFilament:
+    """Test prefer_lowest_filament sorting in _match_filaments_to_slots."""
+
+    @pytest.fixture
+    def scheduler(self):
+        return PrintScheduler()
+
+    def test_prefer_lowest_picks_lower_remain(self, scheduler):
+        """When enabled, should pick the spool with lower remaining filament."""
+        required = [{"slot_id": 1, "type": "PLA", "color": "#FF0000"}]
+        loaded = [
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 0, "remain": 80},
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 1, "remain": 30},
+        ]
+
+        result = scheduler._match_filaments_to_slots(required, loaded, prefer_lowest=True)
+        assert result == [1]  # Should pick tray 1 (30% remaining)
+
+    def test_prefer_lowest_disabled_picks_first(self, scheduler):
+        """When disabled, should pick the first matching spool (default behavior)."""
+        required = [{"slot_id": 1, "type": "PLA", "color": "#FF0000"}]
+        loaded = [
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 0, "remain": 80},
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 1, "remain": 30},
+        ]
+
+        result = scheduler._match_filaments_to_slots(required, loaded, prefer_lowest=False)
+        assert result == [0]  # Should pick tray 0 (first match)
+
+    def test_prefer_lowest_unknown_remain_sorted_last(self, scheduler):
+        """Spools with remain=-1 (unknown) should be sorted to end."""
+        required = [{"slot_id": 1, "type": "PLA", "color": "#FF0000"}]
+        loaded = [
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 0, "remain": -1},
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 1, "remain": 50},
+        ]
+
+        result = scheduler._match_filaments_to_slots(required, loaded, prefer_lowest=True)
+        assert result == [1]  # Should pick tray 1 (known 50%) over unknown
+
+    def test_prefer_lowest_missing_remain_sorted_last(self, scheduler):
+        """Spools without remain field should be sorted to end."""
+        required = [{"slot_id": 1, "type": "PLA", "color": "#FF0000"}]
+        loaded = [
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 0},  # No remain field
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 1, "remain": 50},
+        ]
+
+        result = scheduler._match_filaments_to_slots(required, loaded, prefer_lowest=True)
+        assert result == [1]  # Should pick tray 1 (known 50%) over missing
+
+    def test_prefer_lowest_multiple_slots(self, scheduler):
+        """Should pick lowest remain for each slot independently."""
+        required = [
+            {"slot_id": 1, "type": "PLA", "color": "#FF0000"},
+            {"slot_id": 2, "type": "PLA", "color": "#FF0000"},
+        ]
+        loaded = [
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 0, "remain": 80},
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 1, "remain": 30},
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 2, "remain": 60},
+        ]
+
+        result = scheduler._match_filaments_to_slots(required, loaded, prefer_lowest=True)
+        # Slot 1 gets tray 1 (30%), slot 2 gets tray 2 (60%) — tray 0 (80%) unused
+        assert result == [1, 2]
+
+    def test_prefer_lowest_with_tray_info_idx(self, scheduler):
+        """Should sort within tray_info_idx subset too."""
+        required = [{"slot_id": 1, "type": "PLA", "color": "#FFFFFF", "tray_info_idx": "GFA00"}]
+        loaded = [
+            {"type": "PLA", "color": "#FFFFFF", "global_tray_id": 0, "tray_info_idx": "GFA00", "remain": 80},
+            {"type": "PLA", "color": "#FFFFFF", "global_tray_id": 1, "tray_info_idx": "GFA00", "remain": 20},
+        ]
+
+        result = scheduler._match_filaments_to_slots(required, loaded, prefer_lowest=True)
+        assert result == [1]  # Should pick tray 1 (20%) within idx subset
+
+    def test_prefer_lowest_external_spool(self, scheduler):
+        """External spool with low remain should be preferred over AMS spool."""
+        required = [{"slot_id": 1, "type": "PLA", "color": "#FF0000"}]
+        loaded = [
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 0, "remain": 80, "is_external": False},
+            {"type": "PLA", "color": "#FF0000", "global_tray_id": 254, "remain": 10, "is_external": True},
+        ]
+
+        result = scheduler._match_filaments_to_slots(required, loaded, prefer_lowest=True)
+        assert result == [254]  # Should pick external spool (10%) over AMS (80%)
+
+
 class TestBuildLoadedFilamentsTrayInfoIdx:
     """Test tray_info_idx extraction in _build_loaded_filaments."""
 

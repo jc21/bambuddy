@@ -1419,6 +1419,8 @@ export default {
     filamentChecks: 'Verificações de filamento',
     disableFilamentWarnings: 'Desativar avisos de filamento',
     disableFilamentWarningsDesc: 'Não mostrar avisos sobre filamento insuficiente ao imprimir ou adicionar à fila',
+    preferLowestFilament: 'Preferir filamento com menor resto',
+    preferLowestFilamentDesc: 'Quando vários carretéis correspondem, usar o com menos filamento restante',
     trackingModeBuiltIn: 'Inventário Interno',
     trackingModeBuiltInDesc: 'Correspondência automática de RFID e rastreamento de uso incluídos',
     trackingModeSpoolmanDesc: 'Servidor de gerenciamento de filamento externo',

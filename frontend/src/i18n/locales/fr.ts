@@ -1419,6 +1419,8 @@ export default {
     filamentChecks: 'Vérifications du filament',
     disableFilamentWarnings: 'Désactiver les avertissements de filament',
     disableFilamentWarningsDesc: 'Ne pas afficher les avertissements de filament insuffisant lors de l\'impression ou de la mise en file d\'attente',
+    preferLowestFilament: 'Préférer le filament le plus bas',
+    preferLowestFilamentDesc: 'Lorsque plusieurs bobines correspondent, utiliser celle avec le moins de filament restant',
     trackingModeBuiltIn: 'Inventaire Intégré',
     trackingModeBuiltInDesc: 'Correspondance RFID et suivi de consommation inclus',
     trackingModeSpoolmanDesc: 'Serveur de gestion externe',

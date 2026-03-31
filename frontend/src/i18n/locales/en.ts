@@ -1420,6 +1420,8 @@ export default {
     filamentChecks: 'Filament checks',
     disableFilamentWarnings: 'Disable filament warnings',
     disableFilamentWarningsDesc: 'Don\'t show warnings about insufficient filament when printing or queueing',
+    preferLowestFilament: 'Prefer lowest remaining filament',
+    preferLowestFilamentDesc: 'When multiple spools match, use the one with the least filament remaining',
     trackingModeBuiltIn: 'Built-in Inventory',
     trackingModeBuiltInDesc: 'RFID auto-matching and usage tracking included',
     trackingModeSpoolmanDesc: 'External filament management server',

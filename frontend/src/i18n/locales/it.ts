@@ -1419,6 +1419,8 @@ export default {
     filamentChecks: 'Controlli filamento',
     disableFilamentWarnings: 'Disabilita avvisi filamento',
     disableFilamentWarningsDesc: 'Non mostrare avvisi per filamento insufficiente durante la stampa o l\'accodamento',
+    preferLowestFilament: 'Preferisci il filamento con meno residuo',
+    preferLowestFilamentDesc: 'Quando più bobine corrispondono, usa quella con meno filamento rimanente',
     trackingModeBuiltIn: 'Inventario integrato',
     trackingModeBuiltInDesc: 'Riconoscimento RFID automatico e tracciamento dell\'uso inclusi',
     trackingModeSpoolmanDesc: 'Server esterno per la gestione del filamento',

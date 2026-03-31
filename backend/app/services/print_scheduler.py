@@ -703,8 +703,11 @@ class PrintScheduler:
             logger.debug("No filaments loaded on printer %s", printer_id)
             return None
 
+        # Check if user prefers lowest remaining filament when multiple spools match
+        prefer_lowest = await self._get_bool_setting(db, "prefer_lowest_filament")
+
         # Compute mapping: match required filaments to available slots
-        return self._match_filaments_to_slots(filament_reqs, loaded_filaments)
+        return self._match_filaments_to_slots(filament_reqs, loaded_filaments, prefer_lowest)
 
     async def _get_filament_requirements(self, db: AsyncSession, item: PrintQueueItem) -> list[dict] | None:
         """Extract filament requirements from the source 3MF file.
@@ -856,6 +859,7 @@ class PrintScheduler:
                             "is_external": False,
                             "global_tray_id": global_tray_id,
                             "extruder_id": ams_extruder_map.get(str(ams_id)),
+                            "remain": tray.get("remain", -1),
                         }
                     )
 
@@ -875,6 +879,7 @@ class PrintScheduler:
                         "is_external": True,
                         "global_tray_id": tray_id,
                         "extruder_id": (255 - tray_id) if ams_extruder_map else None,
+                        "remain": vt.get("remain", -1),
                     }
                 )
 
@@ -911,7 +916,9 @@ class PrintScheduler:
         except ValueError:
             return False
 
-    def _match_filaments_to_slots(self, required: list[dict], loaded: list[dict]) -> list[int] | None:
+    def _match_filaments_to_slots(
+        self, required: list[dict], loaded: list[dict], prefer_lowest: bool = False
+    ) -> list[int] | None:
         """Match required filaments to loaded filaments and build AMS mapping.
 
         Priority: unique tray_info_idx match > exact color match > similar color match > type-only match
@@ -957,6 +964,10 @@ class PrintScheduler:
             if req_nozzle_id is not None:
                 available = [f for f in available if f.get("extruder_id") == req_nozzle_id]
 
+            # Sort by remaining filament (ascending) so lowest-remain spool wins .find()
+            if prefer_lowest:
+                available.sort(key=lambda f: f.get("remain", -1) if f.get("remain", -1) >= 0 else 101)
+
             # Check if tray_info_idx is unique among available trays
             if req_tray_info_idx:
                 idx_matches = [f for f in available if f.get("tray_info_idx") == req_tray_info_idx]
@@ -973,6 +984,8 @@ class PrintScheduler:
                         f"Non-unique tray_info_idx={req_tray_info_idx} found in {len(idx_matches)} trays, "
                         f"using color matching among trays: {[f['global_tray_id'] for f in idx_matches]}"
                     )
+                    if prefer_lowest:
+                        idx_matches.sort(key=lambda f: f.get("remain", -1) if f.get("remain", -1) >= 0 else 101)
                     # Use color matching within this subset
                     for f in idx_matches:
                         f_color = f.get("color", "")
