@@ -680,11 +680,11 @@ export function Layout() {
         )}
 
         {/* Footer */}
-        <div className="p-2 border-t border-bambu-dark-tertiary">
+        <div className="flex-shrink-0 p-2 border-t border-bambu-dark-tertiary">
           {isSidebarCompact || sidebarExpanded ? (
             <div className="flex flex-col gap-2 px-2">
               {/* Top row: icons */}
-              <div className="flex items-center justify-center gap-1">
+              <div className="flex items-center justify-center gap-1 flex-wrap">
                 {hasSwitchbarPlugs && (
                   <div className="relative">
                     <button
@@ -779,7 +779,7 @@ export function Layout() {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-1 overflow-y-auto max-h-[50vh]">
               {updateCheck?.update_available && (
                 <button
                   onClick={() => navigate('/settings')}
