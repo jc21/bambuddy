@@ -120,7 +120,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Queue Only mode (stage without auto-start)
 - Clear plate confirmation between queued prints (can be disabled in settings for farm workflows)
 - Smart plug integration (Tasmota, Home Assistant, MQTT, REST/Webhook)
-- REST smart plugs: Control any device with an HTTP API (openHAB, ioBroker, FHEM, Node-RED)
+- REST smart plugs: Control any device with an HTTP API (openHAB, ioBroker, FHEM, Node-RED) with separate power/energy URLs and unit multipliers
 - MQTT smart plugs: Subscribe to Zigbee2MQTT, Shelly, or any MQTT topic for energy monitoring
 - Energy consumption tracking (per-print kWh and cost)
 - HA energy sensor support (for plugs with separate power/energy sensors)

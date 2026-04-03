@@ -4,6 +4,9 @@ All notable changes to Bambuddy will be documented in this file.
 
 ## [0.2.3b2] - Unreleased
 
+### Improved
+- **REST Smart Plug: Separate Power/Energy URLs and Unit Multipliers** ([#472](https://github.com/maziggy/bambuddy/issues/472)) — REST/Webhook smart plugs can now use individual URLs for power and energy data instead of requiring all values in a single status response. Each value falls back to the shared Status URL when no separate URL is configured, so existing setups work without changes. Added power and energy multipliers for unit conversion (e.g., set energy multiplier to `0.001` to convert Wh to kWh). Useful for platforms like ioBroker that expose each data point as a separate API endpoint.
+
 ### Fixed
 - **WebSocket Crash on Printers Without `fun` Field** ([#873](https://github.com/maziggy/bambuddy/issues/873)) — Connecting to printers that don't send the MQTT `fun` field (A1, P1 series, X1Plus firmware) caused a repeating `'str' object has no attribute 'get'` crash in the WebSocket handler, showing the printer as offline with missing AMS and SD card info. The developer mode probe introduced in 0.2.3b1 published an MQTT message inside `_update_state()` between overwriting `raw_data` with the full MQTT dict (where `vt_tray` is a raw dict) and restoring the previously normalized list — the `publish()` call released the GIL, letting the event loop read the un-normalized dict and iterate over string keys instead of spool dicts. Fixed by normalizing `vt_tray` dict→list in the MQTT data before assignment, and moving preserved field restoration before the probe. Added defensive normalization in `printer_state_to_dict` as a belt-and-suspenders guard.
 

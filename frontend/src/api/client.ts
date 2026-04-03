@@ -1111,8 +1111,12 @@ export interface SmartPlug {
   rest_status_url: string | null;
   rest_status_path: string | null;
   rest_status_on_value: string | null;
+  rest_power_url: string | null;
   rest_power_path: string | null;
+  rest_power_multiplier: number;
+  rest_energy_url: string | null;
   rest_energy_path: string | null;
+  rest_energy_multiplier: number;
   printer_id: number | null;
   enabled: boolean;
   auto_on: boolean;
@@ -1178,8 +1182,12 @@ export interface SmartPlugCreate {
   rest_status_url?: string | null;
   rest_status_path?: string | null;
   rest_status_on_value?: string | null;
+  rest_power_url?: string | null;
   rest_power_path?: string | null;
+  rest_power_multiplier?: number;
+  rest_energy_url?: string | null;
   rest_energy_path?: string | null;
+  rest_energy_multiplier?: number;
   printer_id?: number | null;
   enabled?: boolean;
   auto_on?: boolean;
@@ -1237,8 +1245,12 @@ export interface SmartPlugUpdate {
   rest_status_url?: string | null;
   rest_status_path?: string | null;
   rest_status_on_value?: string | null;
+  rest_power_url?: string | null;
   rest_power_path?: string | null;
+  rest_power_multiplier?: number;
+  rest_energy_url?: string | null;
   rest_energy_path?: string | null;
+  rest_energy_multiplier?: number;
   printer_id?: number | null;
   enabled?: boolean;
   auto_on?: boolean;

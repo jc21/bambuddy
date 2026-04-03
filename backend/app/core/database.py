@@ -1610,6 +1610,24 @@ async def run_migrations(conn):
     except OperationalError:
         pass  # Already applied
 
+    # Migration: Add separate REST power/energy URLs and multipliers
+    try:
+        await conn.execute(text("ALTER TABLE smart_plugs ADD COLUMN rest_power_url VARCHAR(500)"))
+    except OperationalError:
+        pass  # Already applied
+    try:
+        await conn.execute(text("ALTER TABLE smart_plugs ADD COLUMN rest_power_multiplier REAL DEFAULT 1.0"))
+    except OperationalError:
+        pass  # Already applied
+    try:
+        await conn.execute(text("ALTER TABLE smart_plugs ADD COLUMN rest_energy_url VARCHAR(500)"))
+    except OperationalError:
+        pass  # Already applied
+    try:
+        await conn.execute(text("ALTER TABLE smart_plugs ADD COLUMN rest_energy_multiplier REAL DEFAULT 1.0"))
+    except OperationalError:
+        pass  # Already applied
+
     # Migration: Add batch_id column to print_queue for batch grouping
     try:
         await conn.execute(
