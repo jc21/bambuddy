@@ -1,0 +1,17 @@
+name: GitHub Repo Stats
+
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+jobs:
+  repo-stats:
+    name: repo-stats
+    runs-on: ubuntu-latest
+    steps:
+      - name: run-ghrs
+        uses: jgehrcke/github-repo-stats@v1
+        with:
+          repository: maziggy/bambuddy
+          ghtoken: ${{ secrets.GHRS_GITHUB_API_TOKEN }}
