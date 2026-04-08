@@ -3028,6 +3028,7 @@ export default {
     assigned: 'Zugewiesen',
     assigning: 'Wird zugewiesen...',
     searchSpools: 'Spulen suchen...',
+    showAllSpools: 'Alle Spulen anzeigen',
     allMaterials: 'Alle Materialien',
     filterByBrand: 'Nach Marke filtern...',
     showArchived: 'Archivierte anzeigen',

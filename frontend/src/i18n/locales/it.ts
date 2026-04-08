@@ -3014,6 +3014,7 @@ export default {
     assigned: 'Assegnato',
     assigning: 'Assegnazione...',
     searchSpools: 'Cerca bobine...',
+    showAllSpools: 'Mostra tutte le bobine',
     allMaterials: 'Tutti i Materiali',
     filterByBrand: 'Filtra per marchio...',
     showArchived: 'Mostra archiviate',
