@@ -167,8 +167,9 @@ export function SpoolBuddyLayout() {
     touchStartRef.current = null;
     swipeLockedRef.current = false;
 
-    // Vertical swipe down from top edge → open quick menu
-    if (dy >= SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx) && startY < 80) {
+    // Vertical swipe down from top area → open quick menu
+    // Top bar is 48px; allow starting swipe up to 120px from top to account for finger size
+    if (dy >= SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx) && startY < 120) {
       setQuickMenuOpen(true);
       return;
     }
@@ -220,6 +221,15 @@ export function SpoolBuddyLayout() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
+        {/* Pull-down handle — tap or swipe to open quick menu */}
+        <button
+          onClick={() => setQuickMenuOpen(true)}
+          className="w-full h-1.5 bg-bambu-dark-secondary flex justify-center items-center shrink-0 touch-none"
+          aria-label="Open quick menu"
+        >
+          <div className="w-8 h-0.5 rounded-full bg-zinc-600" />
+        </button>
+
         <SpoolBuddyTopBar
           selectedPrinterId={selectedPrinterId}
           onPrinterChange={setSelectedPrinterId}
