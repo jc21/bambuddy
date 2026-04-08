@@ -167,12 +167,9 @@ export function SpoolBuddyLayout() {
     touchStartRef.current = null;
     swipeLockedRef.current = false;
 
-    // Vertical swipe: open/close quick menu
-    if (Math.abs(dy) >= SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
-      if (dy > 0 && startY < 80) {
-        // Swipe down from top area → open quick menu
-        setQuickMenuOpen(true);
-      }
+    // Vertical swipe down from top edge → open quick menu
+    if (dy >= SWIPE_THRESHOLD && Math.abs(dy) > Math.abs(dx) && startY < 80) {
+      setQuickMenuOpen(true);
       return;
     }
 
