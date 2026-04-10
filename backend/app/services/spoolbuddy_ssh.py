@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 SSH_USER = "spoolbuddy"
 DEFAULT_INSTALL_PATH = "/opt/bambuddy"
 
+# Project root — where the `.git` directory lives for native installs and for
+# Docker containers that bind-mount the repo. This is intentionally distinct
+# from `settings.base_dir`, which points at the persistent *data* directory
+# (e.g. `DATA_DIR=/app/data` in Docker) and therefore never contains `.git`.
+# `backend/app/services/spoolbuddy_ssh.py` → parents[3] = project root.
+_APP_DIR = Path(__file__).resolve().parents[3]
+
 # Note for Docker: asyncssh.connect() internally calls getpass.getuser() to
 # resolve the *local* username for ~/.ssh/config host matching. Under an
 # arbitrary PUID with no /etc/passwd entry this would raise OSError. The
@@ -93,22 +100,27 @@ async def get_public_key() -> str:
 def detect_current_branch() -> str:
     """Detect the git branch Bambuddy is running on.
 
-    Reads `.git/HEAD` directly rather than shelling out to `git`. This keeps
-    the behaviour identical for native installs, bare Docker containers
-    (no .git — fall through to the env var), and Docker containers that
-    bind-mount the repo (.git is present, no `git` binary required, and no
-    `getpwuid()` call that could fail under an arbitrary PUID).
+    Reads `.git/HEAD` directly from the application root (``_APP_DIR``) rather
+    than shelling out to `git`. The application root is deliberately distinct
+    from ``settings.base_dir``: in Docker, ``base_dir`` points at the data
+    volume (``/app/data``) which never contains ``.git``, while the repo is
+    bind-mounted (or COPYd) to ``/app``. This works for native installs,
+    bare Docker containers (no ``.git`` — fall through to the env var), and
+    Docker containers that bind-mount the repo (``.git`` is present, no
+    ``git`` binary required, and no ``getpwuid()`` call that could fail under
+    an arbitrary PUID).
 
-    Fallback order: `.git/HEAD` → `GIT_BRANCH` env var → `"main"`.
+    Fallback order: ``.git/HEAD`` → ``GIT_BRANCH`` env var → ``"main"``.
     """
-    git_path = settings.base_dir / ".git"
+    git_path = _APP_DIR / ".git"
     try:
         if git_path.exists():
-            # Git worktrees use a file containing `gitdir: <path>` instead of a dir.
+            # Git worktrees use a file containing `gitdir: <path>` instead of
+            # a directory — follow the pointer.
             if git_path.is_file():
                 content = git_path.read_text(encoding="utf-8").strip()
                 if content.startswith("gitdir:"):
-                    git_path = (settings.base_dir / content.removeprefix("gitdir:").strip()).resolve()
+                    git_path = (_APP_DIR / content.removeprefix("gitdir:").strip()).resolve()
 
             head_file = git_path / "HEAD"
             if head_file.is_file():
