@@ -87,6 +87,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Fan status monitoring (part cooling, auxiliary, chamber)
 - Printer control (stop, pause, resume, chamber light, print speed)
 - Bulk printer actions (multi-select cards, then stop/pause/resume/clear all — select by state or location)
+- Printer search and filters — live search by name/model/location/serial plus status and location dropdown filters (WebSocket-reactive, mobile-friendly)
 - Resizable printer cards (S/M/L/XL)
 - Skip objects during print
 - AMS slot RFID re-read
@@ -150,6 +151,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Color-coded project badges
 - Bulk assign archives via multi-select toolbar
 - Import/Export projects as ZIP (includes files) or JSON
+- Print or queue files from linked library folders directly in the project view (resulting archive auto-linked to the project)
 
 </td>
 <td width="50%" valign="top">
