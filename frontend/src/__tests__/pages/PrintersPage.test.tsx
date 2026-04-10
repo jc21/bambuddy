@@ -625,5 +625,59 @@ describe('PrintersPage', () => {
         expect(screen.queryByText('P1S Backup')).not.toBeInTheDocument();
       });
     });
+
+    it('filters by location via dropdown', async () => {
+      // Override: give printer 2 its own location so the dropdown has two options
+      // and we can verify the filter picks the right one. Printer 1 stays at 'Workshop'.
+      server.use(
+        http.get('/api/v1/printers/', () =>
+          HttpResponse.json([
+            mockPrinters[0],
+            { ...mockPrinters[1], location: 'Office' },
+          ])
+        )
+      );
+
+      render(<PrintersPage />);
+      await waitFor(() => {
+        expect(screen.getByText('X1 Carbon')).toBeInTheDocument();
+        expect(screen.getByText('P1S Backup')).toBeInTheDocument();
+      });
+
+      // Select "Workshop" from the location filter dropdown
+      fireEvent.change(screen.getByDisplayValue('All locations'), { target: { value: 'Workshop' } });
+
+      await waitFor(() => {
+        expect(screen.getByText('X1 Carbon')).toBeInTheDocument();
+        expect(screen.queryByText('P1S Backup')).not.toBeInTheDocument();
+      });
+
+      // Switch to "Office" — the other printer should now be the only one visible
+      fireEvent.change(screen.getByDisplayValue('Workshop'), { target: { value: 'Office' } });
+
+      await waitFor(() => {
+        expect(screen.queryByText('X1 Carbon')).not.toBeInTheDocument();
+        expect(screen.getByText('P1S Backup')).toBeInTheDocument();
+      });
+    });
+
+    it('hides location filter when no printers have a location', async () => {
+      // Both printers have null location — dropdown should not render at all
+      server.use(
+        http.get('/api/v1/printers/', () =>
+          HttpResponse.json([
+            { ...mockPrinters[0], location: null },
+            { ...mockPrinters[1], location: null },
+          ])
+        )
+      );
+
+      render(<PrintersPage />);
+      await waitFor(() => expect(screen.getByText('X1 Carbon')).toBeInTheDocument());
+
+      // Status filter is still there, but the location filter should be absent.
+      expect(screen.getByDisplayValue('All statuses')).toBeInTheDocument();
+      expect(screen.queryByDisplayValue('All locations')).not.toBeInTheDocument();
+    });
   });
 });
