@@ -7,10 +7,15 @@ import { SpoolBuddyBottomNav } from './SpoolBuddyBottomNav';
 import { SpoolBuddyStatusBar } from './SpoolBuddyStatusBar';
 import { SpoolBuddyQuickMenu } from './SpoolBuddyQuickMenu';
 import { useSpoolBuddyState } from '../../hooks/useSpoolBuddyState';
+import { useColorCatalogVersion } from '../../hooks/useColorCatalogVersion';
 import { api, spoolbuddyApi, type Printer, type PrinterStatus } from '../../api/client';
 import { VirtualKeyboard } from '../VirtualKeyboard';
 
 export function SpoolBuddyLayout() {
+  // Cascade a re-render into all SpoolBuddy pages when the color catalog
+  // loads, for the same reason as the main Layout — SpoolBuddyInventoryPage
+  // renders spool color names on mount. See #857.
+  useColorCatalogVersion();
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [alert, setAlert] = useState<{ type: 'warning' | 'error' | 'info'; message: string } | null>(null);
   const [blanked, setBlanked] = useState(false);

@@ -26,6 +26,7 @@ import { useStreamTokenSync } from './hooks/useCameraStreamToken';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ColorCatalogProvider } from './contexts/ColorCatalogContext';
 import { SpoolBuddyLayout } from './components/spoolbuddy/SpoolBuddyLayout';
 import { SpoolBuddyDashboard } from './pages/spoolbuddy/SpoolBuddyDashboard';
 import { SpoolBuddyAmsPage } from './pages/spoolbuddy/SpoolBuddyAmsPage';
@@ -149,6 +150,7 @@ function App() {
       <ToastProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
+            <ColorCatalogProvider>
             <StreamTokenSync />
             <BrowserRouter>
               <Routes>
@@ -197,6 +199,7 @@ function App() {
                 </Route>
               </Routes>
             </BrowserRouter>
+            </ColorCatalogProvider>
           </AuthProvider>
         </QueryClientProvider>
       </ToastProvider>

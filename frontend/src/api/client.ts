@@ -3853,6 +3853,8 @@ export const api = {
     request<{ status: string }>('/inventory/catalog/reset', { method: 'POST' }),
   getColorCatalog: () =>
     request<ColorCatalogEntry[]>('/inventory/colors'),
+  getColorNameMap: () =>
+    request<{ colors: Record<string, string> }>('/inventory/colors/map'),
   addColorEntry: (data: { manufacturer: string; color_name: string; hex_color: string; material: string | null }) =>
     request<ColorCatalogEntry>('/inventory/colors', { method: 'POST', body: JSON.stringify(data) }),
   updateColorEntry: (id: number, data: { manufacturer: string; color_name: string; hex_color: string; material: string | null }) =>

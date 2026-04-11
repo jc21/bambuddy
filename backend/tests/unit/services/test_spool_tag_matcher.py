@@ -3,6 +3,7 @@
 import pytest
 from sqlalchemy import inspect
 
+from backend.app.models.color_catalog import ColorCatalogEntry
 from backend.app.models.spool import Spool
 from backend.app.models.spool_assignment import SpoolAssignment
 from backend.app.services.spool_tag_matcher import (
@@ -805,6 +806,73 @@ async def test_create_spool_standard_not_affected(db_session):
     spool = await create_spool_from_tray(db_session, tray)
     assert spool.material == "PLA"
     assert spool.subtype == "Basic"
+
+
+# -- color resolution (#857) -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_color_resolves_from_catalog_not_suffix_fallback(db_session):
+    """Regression for #857 — A17-R1 (PLA Translucent Cherry Pink) must NOT resolve
+    to 'Scarlet Red' just because 'R1' also appears in PLA Matte.
+
+    The old resolver fell back to a suffix lookup table when the exact tray_id_name
+    wasn't mapped, which produced wrong names across material families. Cross-family
+    suffix codes are not globally unique, so only the catalog hex lookup is safe.
+    """
+    # Seed the catalog with the entry that the Cherry Pink hex should hit.
+    db_session.add(
+        ColorCatalogEntry(
+            manufacturer="Bambu Lab",
+            color_name="Cherry Pink",
+            hex_color="#F5B6CD",
+            material="PLA Translucent",
+            is_default=True,
+        )
+    )
+    await db_session.flush()
+
+    tray = {
+        **SAMPLE_TRAY,
+        "tray_type": "PLA",
+        "tray_sub_brands": "PLA Translucent",
+        "tray_color": "F5B6CDFF",
+        "tray_id_name": "A17-R1",
+    }
+    spool = await create_spool_from_tray(db_session, tray)
+    assert spool.color_name == "Cherry Pink"
+
+
+@pytest.mark.asyncio
+async def test_color_name_is_none_when_catalog_miss_and_code_unreadable(db_session):
+    """When the hex isn't in the catalog and tray_id_name is a code ('X##-Y#'),
+    color_name must stay None rather than falling through to a wrong suffix match.
+    A missing name is preferable to a confidently-wrong one.
+    """
+    tray = {
+        **SAMPLE_TRAY,
+        "tray_type": "PLA",
+        "tray_sub_brands": "PLA Translucent",
+        "tray_color": "F5B6CDFF",  # not seeded
+        "tray_id_name": "A17-R1",
+    }
+    spool = await create_spool_from_tray(db_session, tray)
+    assert spool.color_name is None
+
+
+@pytest.mark.asyncio
+async def test_color_name_falls_back_to_readable_tray_id_name(db_session):
+    """If tray_id_name is a human-readable label (no code pattern), use it when the
+    catalog has no entry for the hex. Preserves behavior for third-party spools whose
+    firmware puts a readable string in tray_id_name instead of a Bambu code.
+    """
+    tray = {
+        **SAMPLE_TRAY,
+        "tray_color": "123456FF",  # not in catalog
+        "tray_id_name": "Custom Purple",  # no '-', readable
+    }
+    spool = await create_spool_from_tray(db_session, tray)
+    assert spool.color_name == "Custom Purple"
 
 
 @pytest.mark.asyncio
