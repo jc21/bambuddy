@@ -36,9 +36,10 @@
 Bambuddy is a community-driven project and I'm **actively looking for contributors** — especially for two areas I can't cover alone:
 
 - 📝 **Documentation writers** — help improve the wiki, guides, and feature docs so new users have a smooth onboarding
-- 💬 **Forum moderators & admins** — we're launching a **Discourse-based community forum** and need people to help moderate, welcome newcomers, and keep discussions healthy
+- ⚙️ **Discourse admin** — we already have a **Discourse** instance running but it still needs to be configured, themed, and tuned (categories, permissions, SSO, email, plugins, backups). If you know Discourse or want to dig in, I'd love your help.
+- 💬 **Forum moderators** — once the forum opens, we need people to welcome newcomers, answer questions, and keep discussions healthy
 
-You don't need to be a developer. If you enjoy writing, helping others, or keeping a community friendly, you're exactly who we're looking for.
+You don't need to be a developer for the docs or moderator roles. If you enjoy writing, helping others, or keeping a community friendly, you're exactly who we're looking for.
 
 **Get in touch:**
 - 💬 [Discord](https://discord.gg/aFS3ZfScHM) — fastest way to chat
@@ -614,10 +615,11 @@ Full documentation available at **[wiki.bambuddy.cool](http://wiki.bambuddy.cool
 Contributions welcome! **I'm especially looking for help with documentation and the upcoming Discourse forum** — see [Contributors Wanted](#-contributors-wanted--help-shape-bambuddy) above. Other ways to help:
 
 1. **📝 Document** — Improve the wiki and guides *(urgently needed!)*
-2. **💬 Moderate** — Help run the upcoming community forum *(urgently needed!)*
-3. **Test** — Report issues with your printer model
-4. **Translate** — Add new languages
-5. **Code** — Submit PRs for bugs or features
+2. **⚙️ Admin Discourse** — Help configure and run the forum instance *(urgently needed!)*
+3. **💬 Moderate** — Welcome newcomers and keep forum discussions healthy *(urgently needed!)*
+4. **Test** — Report issues with your printer model
+5. **Translate** — Add new languages
+6. **Code** — Submit PRs for bugs or features
 
 Not sure where to start? Reach out on [Discord](https://discord.gg/aFS3ZfScHM) or email **martin@bambuddy.cool** — I'll help you find something that fits.
 
