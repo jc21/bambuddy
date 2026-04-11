@@ -53,6 +53,7 @@ import {
   List,
   GanttChart,
   Code,
+  Snail,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { type TimeFormat, formatETA, formatDuration, formatRelativeTime, parseUTCDate } from '../utils/date';
@@ -1187,7 +1188,7 @@ export function QueuePage() {
           }`}
           title={t('queue.sjf.tooltip', 'Shortest Job First — scheduler prioritizes shorter prints')}
         >
-          <Timer className="w-3.5 h-3.5" />
+          <Snail className="w-4 h-4" />
           <span className="hidden sm:inline">{t('queue.sjf.label', 'SJF')}</span>
           <span className={`w-1.5 h-1.5 rounded-full ${settings?.queue_shortest_first ? 'bg-bambu-green' : 'bg-bambu-gray'}`} />
         </button>
