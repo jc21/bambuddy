@@ -153,6 +153,36 @@ class TestDeviceEndpoints:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
+    async def test_unregister_device(self, async_client: AsyncClient, device_factory, db_session):
+        await device_factory(device_id="sb-keep", hostname="keep")
+        await device_factory(device_id="sb-drop", hostname="drop")
+        spoolbuddy_routes._spoolbuddy_online_last_broadcast["sb-drop"] = 123.0
+
+        with patch("backend.app.api.routes.spoolbuddy.ws_manager") as mock_ws:
+            mock_ws.broadcast = AsyncMock()
+            resp = await async_client.delete(f"{API}/devices/sb-drop")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "deleted", "device_id": "sb-drop"}
+        assert "sb-drop" not in spoolbuddy_routes._spoolbuddy_online_last_broadcast
+        mock_ws.broadcast.assert_called_once()
+        msg = mock_ws.broadcast.call_args[0][0]
+        assert msg["type"] == "spoolbuddy_unregistered"
+        assert msg["device_id"] == "sb-drop"
+
+        # Other device still present
+        resp = await async_client.get(f"{API}/devices")
+        remaining = {d["device_id"] for d in resp.json()}
+        assert remaining == {"sb-keep"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
+    async def test_unregister_device_not_found(self, async_client: AsyncClient):
+        resp = await async_client.delete(f"{API}/devices/sb-ghost")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    @pytest.mark.integration
     async def test_heartbeat_updates_status(self, async_client: AsyncClient, device_factory):
         device = await device_factory(device_id="sb-hb")
         spoolbuddy_routes._spoolbuddy_online_last_broadcast.clear()

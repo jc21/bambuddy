@@ -5217,6 +5217,11 @@ export const spoolbuddyApi = {
   getDevices: () =>
     request<SpoolBuddyDevice[]>('/spoolbuddy/devices'),
 
+  deleteDevice: (deviceId: string) =>
+    request<{ status: string; device_id: string }>(`/spoolbuddy/devices/${deviceId}`, {
+      method: 'DELETE',
+    }),
+
   tare: (deviceId: string) =>
     request<{ status: string }>(`/spoolbuddy/devices/${deviceId}/calibration/tare`, {
       method: 'POST',

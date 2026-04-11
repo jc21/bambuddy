@@ -188,6 +188,26 @@ async def list_devices(
     return [_device_to_response(d) for d in devices]
 
 
+@router.delete("/devices/{device_id}")
+async def unregister_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_DELETE),
+):
+    """Unregister a SpoolBuddy device. The daemon can re-register via heartbeat later."""
+    result = await db.execute(select(SpoolBuddyDevice).where(SpoolBuddyDevice.device_id == device_id))
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not registered")
+
+    await db.delete(device)
+    await db.commit()
+    _spoolbuddy_online_last_broadcast.pop(device_id, None)
+    logger.info("SpoolBuddy device unregistered: %s (%s)", device_id, device.hostname)
+    await ws_manager.broadcast({"type": "spoolbuddy_unregistered", "device_id": device_id})
+    return {"status": "deleted", "device_id": device_id}
+
+
 @router.post("/devices/{device_id}/heartbeat", response_model=HeartbeatResponse)
 async def device_heartbeat(
     device_id: str,
