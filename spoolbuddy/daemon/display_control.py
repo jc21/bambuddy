@@ -2,11 +2,16 @@
 
 Brightness: DSI backlights are controlled via sysfs /sys/class/backlight/*/brightness.
             HDMI brightness is handled by the frontend via CSS filter.
-Blanking:   Handled entirely by the frontend (CSS black overlay with touch-to-wake).
-            The daemon tracks idle state but does not control the physical display.
+Blanking:   The daemon tracks idle state and controls HDMI power via wlopm when
+            available. NFC tag scans and scale weight changes wake the display
+            automatically, and the idle timeout re-blanks it.  swayidle handles
+            touch-based wake/blank independently — both are idempotent via wlopm.
 """
 
 import logging
+import os
+import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -22,11 +27,19 @@ class DisplayControl:
         self._blank_timeout = 0  # seconds, 0 = disabled
         self._last_activity = time.monotonic()
         self._blanked = False
+        self._wlopm_path = shutil.which("wlopm")
+        self._wayland_env: dict[str, str] | None = None
+        self._output = os.environ.get("SPOOLBUDDY_DISPLAY_OUTPUT", "HDMI-A-1")
 
         if self._backlight_path:
             logger.info("Backlight found: %s (max=%d)", self._backlight_path, self._max_brightness)
         else:
             logger.info("No DSI backlight found, brightness control via frontend CSS")
+
+        if self._wlopm_path:
+            logger.info("wlopm found at %s, HDMI wake/blank enabled", self._wlopm_path)
+        else:
+            logger.info("wlopm not found, HDMI wake/blank disabled")
 
     def _find_backlight(self) -> Path | None:
         if not BACKLIGHT_BASE.exists():
@@ -86,10 +99,52 @@ class DisplayControl:
         if not self._blanked and idle >= self._blank_timeout:
             self._blank()
 
+    def _discover_wayland_env(self) -> dict[str, str] | None:
+        """Discover WAYLAND_DISPLAY and XDG_RUNTIME_DIR for the kiosk session.
+
+        The daemon runs as a systemd service outside the Wayland session, so
+        these variables aren't inherited.  We probe the same runtime dir that
+        labwc uses (the daemon and kiosk run as the same user).
+        """
+        xdg = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        runtime = Path(xdg)
+        if not runtime.is_dir():
+            return None
+        for entry in sorted(runtime.iterdir()):
+            if entry.name.startswith("wayland-") and not entry.name.endswith(".lock"):
+                return {"WAYLAND_DISPLAY": entry.name, "XDG_RUNTIME_DIR": xdg}
+        return None
+
+    def _wlopm(self, on: bool) -> None:
+        """Toggle HDMI output via wlopm.  No-op if wlopm is unavailable."""
+        if not self._wlopm_path:
+            return
+        # Retry discovery each call until the Wayland socket appears — labwc
+        # may start after the daemon on boot.
+        if self._wayland_env is None:
+            self._wayland_env = self._discover_wayland_env()
+            if self._wayland_env is None:
+                logger.debug("No Wayland socket found, cannot control HDMI")
+                return
+            logger.info("Wayland session discovered: %s", self._wayland_env.get("WAYLAND_DISPLAY"))
+        flag = "--on" if on else "--off"
+        try:
+            env = {**os.environ, **self._wayland_env}
+            subprocess.run(
+                [self._wlopm_path, flag, self._output],
+                env=env,
+                timeout=5,
+                capture_output=True,
+            )
+        except Exception as e:
+            logger.debug("wlopm %s %s failed: %s", flag, self._output, e)
+
     def _blank(self):
         self._blanked = True
-        logger.debug("Screen idle timeout reached (frontend handles blanking)")
+        self._wlopm(on=False)
+        logger.debug("Screen idle timeout reached, HDMI off")
 
     def _unblank(self):
         self._blanked = False
-        logger.debug("Activity detected (frontend handles unblanking)")
+        self._wlopm(on=True)
+        logger.debug("Activity detected, HDMI on")
