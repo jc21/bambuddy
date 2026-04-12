@@ -110,16 +110,33 @@ class DisplayControl:
         """Discover WAYLAND_DISPLAY and XDG_RUNTIME_DIR for the kiosk session.
 
         The daemon runs as a systemd service outside the Wayland session, so
-        these variables aren't inherited.  We probe the same runtime dir that
-        labwc uses (the daemon and kiosk run as the same user).
+        these variables aren't inherited.  First try our own runtime dir, then
+        scan all /run/user/*/ dirs — on a kiosk there's exactly one Wayland
+        session and the daemon may run under a system uid that logind doesn't
+        create a runtime dir for.
         """
-        xdg = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
-        runtime = Path(xdg)
-        if not runtime.is_dir():
-            return None
-        for entry in sorted(runtime.iterdir()):
-            if entry.name.startswith("wayland-") and not entry.name.endswith(".lock"):
-                return {"WAYLAND_DISPLAY": entry.name, "XDG_RUNTIME_DIR": xdg}
+        candidates: list[Path] = []
+        # Prefer our own runtime dir if set
+        own_xdg = os.environ.get("XDG_RUNTIME_DIR", "")
+        if own_xdg:
+            candidates.append(Path(own_xdg))
+        candidates.append(Path(f"/run/user/{os.getuid()}"))
+        # Fall back to scanning all user runtime dirs
+        run_user = Path("/run/user")
+        if run_user.is_dir():
+            for uid_dir in sorted(run_user.iterdir()):
+                if uid_dir.is_dir() and uid_dir not in candidates:
+                    candidates.append(uid_dir)
+
+        for runtime in candidates:
+            if not runtime.is_dir():
+                continue
+            try:
+                for entry in sorted(runtime.iterdir()):
+                    if entry.name.startswith("wayland-") and not entry.name.endswith(".lock"):
+                        return {"WAYLAND_DISPLAY": entry.name, "XDG_RUNTIME_DIR": str(runtime)}
+            except PermissionError:
+                continue
         return None
 
     def _wlopm(self, on: bool) -> None:
@@ -132,7 +149,7 @@ class DisplayControl:
         if self._wayland_env is None:
             self._wayland_env = self._discover_wayland_env()
             if self._wayland_env is None:
-                logger.warning("No Wayland socket found in %s, cannot control HDMI", f"/run/user/{os.getuid()}")
+                logger.warning("No Wayland socket found in /run/user/ (uid=%d), cannot control HDMI", os.getuid())
                 return
             logger.info("Wayland session discovered: %s", self._wayland_env.get("WAYLAND_DISPLAY"))
         flag = "--on" if on else "--off"
