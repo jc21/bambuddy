@@ -2462,7 +2462,7 @@ function PrinterCard({
               ) : null}
 
               {/* SD Card Badge */}
-              {status && (
+              {status?.connected && (
                 <span
                   className={`flex items-center px-2 py-1 rounded-full text-xs ${
                     status.sdcard
@@ -2476,7 +2476,7 @@ function PrinterCard({
               )}
 
               {/* Enclosure Door Badge (X1/P1S/P2S/H2*) */}
-              {status && ['X1C', 'X1', 'X1E', 'P1S', 'P1P', 'P2S', 'H2D', 'H2D Pro', 'H2C', 'H2S'].includes(printer.model ?? '') && (
+              {status?.connected && ['X1C', 'X1', 'X1E', 'P1S', 'P1P', 'P2S', 'H2D', 'H2D Pro', 'H2C', 'H2S'].includes(printer.model ?? '') && (
                 <span
                   className={`flex items-center px-2 py-1 rounded-full text-xs ${
                     status.door_open
