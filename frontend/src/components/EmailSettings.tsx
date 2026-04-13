@@ -176,7 +176,7 @@ export function EmailSettings() {
   return (
     <div className="space-y-3">
       {/* Advanced Authentication Toggle - Always visible */}
-      <Card>
+      <Card id="card-email-advanced-auth">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -245,7 +245,7 @@ export function EmailSettings() {
       {/* SMTP Config + Test SMTP side-by-side on lg+ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-        <Card>
+        <Card id="card-smtp-config">
           <CardHeader>
             <h2 className="text-lg font-semibold text-white">
               {t('settings.email.smtpSettings') || 'SMTP Configuration'}
@@ -393,7 +393,7 @@ export function EmailSettings() {
 
         {/* Test SMTP */}
         <div>
-        <Card>
+        <Card id="card-email-test">
           <CardHeader>
             <h2 className="text-lg font-semibold text-white">
               {t('settings.email.testConnection') || 'Test SMTP Connection'}

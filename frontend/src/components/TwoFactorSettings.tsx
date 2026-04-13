@@ -286,7 +286,7 @@ export function TwoFactorSettings() {
   return (
     <div className="space-y-6">
       {/* ── TOTP ─────────────────────────────────────────────────────────── */}
-      <Card>
+      <Card id="card-2fa-totp">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${status?.totp_enabled ? 'bg-green-500/20' : 'bg-gray-500/20'}`}>
@@ -391,7 +391,7 @@ export function TwoFactorSettings() {
       </Card>
 
       {/* ── Email OTP ─────────────────────────────────────────────────────── */}
-      <Card>
+      <Card id="card-2fa-emailotp">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${status?.email_otp_enabled ? 'bg-green-500/20' : 'bg-gray-500/20'}`}>
@@ -513,7 +513,7 @@ export function TwoFactorSettings() {
 
       {/* ── Linked SSO accounts ───────────────────────────────────────────── */}
       {oidcLinks && oidcLinks.length > 0 && (
-        <Card>
+        <Card id="card-2fa-linked">
           <CardHeader>
             <h3 className="text-white font-semibold">{t('settings.twoFa.linkedAccounts')}</h3>
             <p className="text-bambu-gray text-sm">{t('settings.twoFa.linkedAccountsDesc')}</p>

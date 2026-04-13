@@ -126,7 +126,7 @@ export function FailureDetectionSettings() {
   return (
     <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
       <div className="space-y-3 flex-1 lg:max-w-xl">
-        <Card>
+        <Card id="card-fd-ml">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -233,7 +233,7 @@ export function FailureDetectionSettings() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="card-fd-perprinter">
           <CardHeader>
             <h2 className="text-lg font-semibold text-white">{t('failureDetection.perPrinterTitle')}</h2>
             <p className="text-sm text-bambu-gray mt-1">{t('failureDetection.perPrinterHint')}</p>
@@ -268,7 +268,7 @@ export function FailureDetectionSettings() {
       </div>
 
       <div className="space-y-3 flex-1 lg:max-w-xl">
-        <Card>
+        <Card id="card-fd-status">
           <CardHeader>
             <h2 className="text-lg font-semibold text-white">{t('failureDetection.statusTitle')}</h2>
           </CardHeader>
@@ -329,7 +329,7 @@ export function FailureDetectionSettings() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="card-fd-history">
           <CardHeader>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">{t('failureDetection.historyTitle')}</h2>

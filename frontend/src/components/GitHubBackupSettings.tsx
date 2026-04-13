@@ -464,7 +464,7 @@ export function GitHubBackupSettings() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Left Column - GitHub Backup */}
       <div className="space-y-6">
-        <Card>
+        <Card id="card-backup-github">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -736,7 +736,7 @@ export function GitHubBackupSettings() {
 
         {/* Backup History - only show if configured and has logs */}
         {logs && logs.length > 0 && (
-          <Card>
+          <Card id="card-backup-history">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -796,7 +796,7 @@ export function GitHubBackupSettings() {
 
       {/* Right Column - Local Backup */}
       <div className="space-y-6">
-        <Card>
+        <Card id="card-backup-local">
           <CardHeader>
             <div className="flex items-center gap-2">
               <Database className="w-5 h-5 text-gray-400" />
@@ -924,7 +924,7 @@ export function GitHubBackupSettings() {
         </Card>
 
         {/* Scheduled Local Backups */}
-        <Card>
+        <Card id="card-backup-scheduled">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">

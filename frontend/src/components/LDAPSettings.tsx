@@ -175,7 +175,7 @@ export function LDAPSettings() {
   return (
     <div className="space-y-3">
       {/* LDAP Toggle */}
-      <Card>
+      <Card id="card-ldap-toggle">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -239,7 +239,7 @@ export function LDAPSettings() {
       </Card>
 
       {/* LDAP Server Configuration */}
-      <Card>
+      <Card id="card-ldap-server">
         <CardHeader>
           <h2 className="text-lg font-semibold text-white">
             {t('settings.ldap.serverConfig') || 'LDAP Server Configuration'}

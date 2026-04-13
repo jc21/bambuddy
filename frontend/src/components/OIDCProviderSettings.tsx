@@ -186,7 +186,7 @@ export function OIDCProviderSettings() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card>
+      <Card id="card-oidc">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -219,7 +219,7 @@ export function OIDCProviderSettings() {
 
       {/* Provider list */}
       {providers && providers.length === 0 && !showCreate && (
-        <Card>
+        <Card id="card-oidc-empty">
           <CardContent>
             <div className="text-center py-8 space-y-3">
               <Globe className="w-12 h-12 text-bambu-gray mx-auto" />
