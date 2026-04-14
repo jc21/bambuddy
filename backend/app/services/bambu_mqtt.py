@@ -422,6 +422,23 @@ class BambuMQTTClient:
                     pass  # Best-effort; paho loop will reconnect on next iteration
         return self.state.connected
 
+    def force_reconnect_stale_session(self, reason: str) -> None:
+        # Heals the #887 half-broken session: telemetry keeps arriving but our
+        # publishes no longer reach the printer. Closing the socket makes paho
+        # drop and re-establish with a fresh session.
+        logger.warning("[%s] Forcing MQTT reconnect: %s", self.serial_number, reason)
+        self._stale_reconnecting = True
+        self.state.connected = False
+        if self.on_state_change:
+            self.on_state_change(self.state)
+        if self._client:
+            try:
+                sock = self._client.socket()
+                if sock:
+                    sock.close()
+            except Exception:
+                pass
+
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         if rc == 0:
             self.state.connected = True
@@ -2527,24 +2544,7 @@ class BambuMQTTClient:
                 )
                 self._dev_mode_probe_seq = None
                 if self._dev_mode_probe_failures >= 2:
-                    # Two consecutive unanswered probes — the MQTT session is likely
-                    # half-broken (printer sends status but ignores commands).
-                    # Force-close the socket so paho reconnects with a fresh session.
-                    logger.warning(
-                        "[%s] MQTT session appears broken (commands not reaching printer), forcing reconnect",
-                        self.serial_number,
-                    )
-                    self._stale_reconnecting = True
-                    self.state.connected = False
-                    if self.on_state_change:
-                        self.on_state_change(self.state)
-                    if self._client:
-                        try:
-                            sock = self._client.socket()
-                            if sock:
-                                sock.close()
-                        except Exception:
-                            pass
+                    self.force_reconnect_stale_session("developer mode probe unanswered 2×")
                 else:
                     # Allow retry on next full status message
                     self._dev_mode_probed = False
