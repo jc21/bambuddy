@@ -597,6 +597,7 @@ Full documentation available at **[wiki.bambuddy.cool](http://wiki.bambuddy.cool
 | Series | Models |
 |--------|--------|
 | X1 | X1, X1 Carbon, X1E |
+| X2 | X2D |
 | H2 | H2D, H2D Pro, H2C, H2S |
 | P1 | P1P, P1S |
 | P2 | P2S |

@@ -1059,6 +1059,8 @@ function mapModelCode(ssdpModel: string | null): string {
     'BL-P001': 'X1C',
     'BL-P002': 'X1',
     'BL-P003': 'X1E',
+    // X2 Series
+    'N6': 'X2D',
     // P Series
     'C11': 'P1S',
     'C12': 'P1P',
@@ -1070,6 +1072,7 @@ function mapModelCode(ssdpModel: string | null): string {
     'X1C': 'X1C',
     'X1': 'X1',
     'X1E': 'X1E',
+    'X2D': 'X2D',
     'P1S': 'P1S',
     'P1P': 'P1P',
     'P2S': 'P2S',
@@ -2508,8 +2511,8 @@ function PrinterCard({
                 </span>
               ) : null}
 
-              {/* Enclosure Door Badge (X1/P1S/P2S/H2*) */}
-              {status?.connected && ['X1C', 'X1', 'X1E', 'P1S', 'P1P', 'P2S', 'H2D', 'H2D Pro', 'H2C', 'H2S'].includes(printer.model ?? '') && (
+              {/* Enclosure Door Badge (X1/X2D/P1S/P2S/H2*) */}
+              {status?.connected && ['X1C', 'X1', 'X1E', 'X2D', 'P1S', 'P1P', 'P2S', 'H2D', 'H2D Pro', 'H2C', 'H2S'].includes(printer.model ?? '') && (
                 <span
                   className={`flex items-center px-2 py-1 rounded-full text-xs ${
                     status.door_open
@@ -2877,8 +2880,8 @@ function PrinterCard({
                       {/* Separator */}
                       <div className="w-px h-5 bg-bambu-gray/30" />
 
-                      {/* Airduct Mode (P2S / H2*) */}
-                      {(['P2S', 'H2D', 'H2C', 'H2S'].includes(printer.model ?? '')) && (() => {
+                      {/* Airduct Mode (P2S / X2D / H2*) */}
+                      {(['P2S', 'X2D', 'H2D', 'H2C', 'H2S'].includes(printer.model ?? '')) && (() => {
                         const isHeating = status.airduct_mode === 1;
                         const Icon = isHeating ? Flame : Snowflake;
                         const color = isHeating ? 'text-orange-400' : 'text-sky-400';

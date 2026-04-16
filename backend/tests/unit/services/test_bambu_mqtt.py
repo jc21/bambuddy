@@ -3354,6 +3354,127 @@ class TestStartPrintAmsMapping:
         assert "ams_mapping" not in cmd
         assert "ams_mapping2" not in cmd
 
+    def test_x2d_external_preserves_deputy_id(self, mqtt_client):
+        """X2D dual-nozzle (#988): 254 (deputy) stays 254, like H2D family.
+
+        X2D launched April 2026 and shares the H2D-style dual-extruder
+        firmware convention — external spool on the deputy (left) nozzle
+        is addressed as ams_id=254, not coerced to 255.
+        """
+        mqtt_client.model = "X2D"
+        mqtt_client.start_print("test.3mf", ams_mapping=[254, 255])
+
+        cmd = self._get_published_command(mqtt_client)
+        assert cmd["ams_mapping"] == [-1, -1]
+        assert cmd["ams_mapping2"] == [
+            {"ams_id": 254, "slot_id": 0},
+            {"ams_id": 255, "slot_id": 0},
+        ]
+
+    def test_x2d_uses_integer_format_for_calibration_fields(self, mqtt_client):
+        """X2D must use H2D-style integer (0/1) format for calibration fields (#988).
+
+        The reporter's support bundle showed X2D running firmware in the same
+        family as H2D. Booleans in these fields are interpreted as nozzle
+        indexes by H2D firmware; X2D is treated identically until proven
+        otherwise.
+        """
+        mqtt_client.model = "X2D"
+        mqtt_client.start_print(
+            "test.3mf",
+            timelapse=True,
+            bed_levelling=False,
+            flow_cali=True,
+            vibration_cali=False,
+            layer_inspect=True,
+        )
+
+        cmd = self._get_published_command(mqtt_client)
+        assert cmd["timelapse"] == 1
+        assert cmd["bed_leveling"] == 0
+        assert cmd["flow_cali"] == 1
+        assert cmd["vibration_cali"] == 0
+        assert cmd["layer_inspect"] == 1
+
+    def test_p2s_still_uses_boolean_format(self, mqtt_client):
+        """Regression guard: P2S is NOT in the is_h2d gate — must still use booleans.
+
+        Adding X2D to the is_h2d set must not accidentally affect P2S, which
+        is single-nozzle and uses boolean format like X1C/A1/P1.
+        """
+        mqtt_client.model = "P2S"
+        mqtt_client.start_print("test.3mf", timelapse=True, flow_cali=False)
+
+        cmd = self._get_published_command(mqtt_client)
+        assert cmd["timelapse"] is True
+        assert cmd["flow_cali"] is False
+
+
+class TestDeleteKProfileDualNozzleDetection:
+    """Regression guard: dual-nozzle detection by serial prefix (#988).
+
+    delete_kprofile branches on serial-prefix-derived dual-nozzle status.
+    H2D serials start with "094"; X2D serials start with "20P9". Non-dual
+    families (X1C "00M", P1S "01P", P2S "22E", A1 "039", etc.) must take
+    the single-nozzle branch.
+    """
+
+    def _make_client(self, serial: str):
+        from unittest.mock import MagicMock
+
+        from backend.app.services.bambu_mqtt import BambuMQTTClient
+
+        client = BambuMQTTClient(
+            ip_address="192.168.1.100",
+            serial_number=serial,
+            access_code="12345678",
+        )
+        client._client = MagicMock()
+        client.state.connected = True
+        return client
+
+    def _published(self, client):
+        return json.loads(client._client.publish.call_args[0][1])["print"]
+
+    def test_h2d_serial_uses_dual_nozzle_format(self):
+        client = self._make_client("09400A000000001")
+        client.delete_kprofile(cali_idx=1, filament_id="GFA00", nozzle_id="HH00-0.4")
+        cmd = self._published(client)
+        # Dual-nozzle command omits setting_id.
+        assert "setting_id" not in cmd
+        assert cmd["extruder_id"] == 0
+
+    def test_x2d_serial_uses_dual_nozzle_format(self):
+        client = self._make_client("20P90A000000001")
+        client.delete_kprofile(cali_idx=1, filament_id="GFA00", nozzle_id="HH00-0.4")
+        cmd = self._published(client)
+        assert "setting_id" not in cmd
+        assert cmd["extruder_id"] == 0
+
+    def test_p2s_serial_uses_single_nozzle_format(self):
+        """P2S is single-nozzle — must NOT take the dual-nozzle branch."""
+        client = self._make_client("22E00A000000001")
+        client.delete_kprofile(
+            cali_idx=1,
+            filament_id="GFA00",
+            nozzle_id="HH00-0.4",
+            setting_id="PFB123",
+        )
+        cmd = self._published(client)
+        # Single-nozzle command includes setting_id.
+        assert cmd["setting_id"] == "PFB123"
+
+    def test_x1c_serial_uses_single_nozzle_format(self):
+        client = self._make_client("00M00A000000001")
+        client.delete_kprofile(
+            cali_idx=1,
+            filament_id="GFA00",
+            nozzle_id="HH00-0.4",
+            setting_id="PFB123",
+        )
+        cmd = self._published(client)
+        assert cmd["setting_id"] == "PFB123"
+
 
 class TestStaleReconnect:
     """Tests for stale connection detection and reconnect without UI bouncing."""

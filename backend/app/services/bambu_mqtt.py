@@ -2927,7 +2927,7 @@ class BambuMQTTClient:
             # but use_ams MUST remain boolean — H2D Pro firmware interprets integer
             # values as nozzle index (1 = deputy nozzle), causing wrong extruder routing
             # Other printers (X1C, P1S, A1, etc.) require actual booleans for all fields
-            is_h2d = self.model and self.model.upper().strip() in ("H2D", "H2D PRO", "H2DPRO", "H2C", "H2S")
+            is_h2d = self.model and self.model.upper().strip() in ("H2D", "H2D PRO", "H2DPRO", "H2C", "H2S", "X2D")
 
             # Build ams_mapping2 from ams_mapping (detailed format with ams_id/slot_id)
             ams_mapping2 = []
@@ -3683,8 +3683,10 @@ class BambuMQTTClient:
         self._sequence_id += 1
 
         # Detect printer type by serial number prefix
-        # H2D series (dual nozzle): serial starts with "094"
-        is_dual_nozzle = self.serial_number.startswith("094")
+        # Dual-nozzle families:
+        #   H2D series: serial starts with "094"
+        #   X2D series: serial starts with "20P9"
+        is_dual_nozzle = self.serial_number.startswith(("094", "20P9"))
 
         if is_dual_nozzle:
             # H2D format: uses extruder_id, nozzle_id, nozzle_diameter
