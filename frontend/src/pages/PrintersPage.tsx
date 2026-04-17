@@ -5271,6 +5271,9 @@ function AddPrinterModal({
                   <option value="H2D Pro">H2D Pro</option>
                   <option value="H2S">H2S</option>
                 </optgroup>
+                <optgroup label="X2 Series">
+                  <option value="X2D">X2D</option>
+                </optgroup>
                 <optgroup label="X1 Series">
                   <option value="X1E">X1E</option>
                   <option value="X1C">X1 Carbon</option>
@@ -5724,6 +5727,9 @@ function EditPrinterModal({
                   <option value="H2D">H2D</option>
                   <option value="H2D Pro">H2D Pro</option>
                   <option value="H2S">H2S</option>
+                </optgroup>
+                <optgroup label="X2 Series">
+                  <option value="X2D">X2D</option>
                 </optgroup>
                 <optgroup label="X1 Series">
                   <option value="X1E">X1E</option>
