@@ -367,6 +367,12 @@ class BambuMQTTClient:
         # when the frontend polls status faster than paho can reconnect.
         self._last_stale_reconnect: float = 0.0
 
+        # Zombie session detection via ams_filament_setting response tracking (#887).
+        # The dev-mode probe only runs on first connect; this catches zombie sessions
+        # that develop later (telemetry flows but publishes silently fail).
+        self._last_ams_cmd_time: float = 0.0  # monotonic time of last published command
+        self._ams_cmd_unanswered: int = 0  # consecutive commands with no response
+
     @property
     def topic_subscribe(self) -> str:
         return f"device/{self.serial_number}/report"
@@ -457,6 +463,8 @@ class BambuMQTTClient:
             self._dev_mode_probe_time = 0.0
             self._dev_mode_probe_failures = 0
             self._connect_time = time.monotonic()
+            self._last_ams_cmd_time = 0.0
+            self._ams_cmd_unanswered = 0
             client.subscribe(self.topic_subscribe)
             # Subscribe to request topic for ams_mapping capture (if supported by broker)
             if self._request_topic_supported:
@@ -771,6 +779,10 @@ class BambuMQTTClient:
                     and print_data.get("sequence_id") == self._dev_mode_probe_seq
                 ):
                     self._handle_dev_mode_probe_response(print_data)
+                # Track user-initiated ams_filament_setting responses (#887 zombie detection)
+                elif cmd == "ams_filament_setting" and self._last_ams_cmd_time > 0:
+                    self._last_ams_cmd_time = 0.0
+                    self._ams_cmd_unanswered = 0
             if "command" in print_data and print_data.get("command") == "extrusion_cali_get":
                 self._handle_kprofile_response(print_data)
 
@@ -2548,6 +2560,23 @@ class BambuMQTTClient:
                 else:
                     # Allow retry on next full status message
                     self._dev_mode_probed = False
+
+        # Zombie session detection: if an ams_filament_setting command has been
+        # pending for >10s with no response, the publish path is likely dead (#887).
+        if self._last_ams_cmd_time > 0:
+            elapsed = time.monotonic() - self._last_ams_cmd_time
+            if elapsed > 10.0:
+                self._ams_cmd_unanswered += 1
+                logger.warning(
+                    "[%s] ams_filament_setting unanswered for %.0fs (count=%d)",
+                    self.serial_number,
+                    elapsed,
+                    self._ams_cmd_unanswered,
+                )
+                self._last_ams_cmd_time = 0.0  # don't re-trigger on next push_status
+                if self._ams_cmd_unanswered >= 2:
+                    self.force_reconnect_stale_session("ams_filament_setting unanswered 2\u00d7")
+                    self._ams_cmd_unanswered = 0
 
         # Log mapping data when received (for usage tracking debugging)
         if "mapping" in data:
@@ -4328,6 +4357,7 @@ class BambuMQTTClient:
         )
         logger.debug("[%s] ams_filament_setting command: %s", self.serial_number, command_json)
         self._client.publish(self.topic_publish, command_json, qos=1)
+        self._last_ams_cmd_time = time.monotonic()
         return True
 
     def reset_ams_slot(self, ams_id: int, tray_id: int) -> bool:
@@ -4385,6 +4415,7 @@ class BambuMQTTClient:
         logger.info("[%s] Resetting AMS slot: AMS %s, tray %s", self.serial_number, ams_id, tray_id)
         logger.debug("[%s] reset_ams_slot command: %s", self.serial_number, command_json)
         self._client.publish(self.topic_publish, command_json, qos=1)
+        self._last_ams_cmd_time = time.monotonic()
         return True
 
     def extrusion_cali_sel(
