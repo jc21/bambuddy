@@ -44,8 +44,8 @@ Bambuddy is a community-driven project and I'm **actively looking for contributo
 You don't need to be a developer for the docs or moderator roles. If you enjoy writing, helping others, or keeping a community friendly, you're exactly who we're looking for.
 
 **Get in touch:**
+- 🗣️ [Forum](https://forum.bambuddy.cool) — chats, longer discussions, guides, and community Q&A
 - 💬 [Discord](https://discord.gg/aFS3ZfScHM) — fastest way to chat
-- 🗣️ [Forum](https://forum.bambuddy.cool) — longer discussions, guides, and community Q&A
 - 🐙 [GitHub Discussions](https://github.com/maziggy/bambuddy/discussions) — open a thread
 - 📧 **martin@bambuddy.cool** — email Martin directly (no GitHub or Discord needed)
 
