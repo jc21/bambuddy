@@ -783,6 +783,43 @@ EOF
     success "Bambuddy service created and enabled"
 }
 
+bootstrap_spoolbuddy_kiosk_key() {
+    # Provision an API key for the local SpoolBuddy kiosk and write it into
+    # spoolbuddy/.env. Runs against the Bambuddy DB directly (via the CLI),
+    # so the bambuddy service does not need to be running yet.
+    info "Provisioning SpoolBuddy kiosk API key..."
+
+    local env_file="$INSTALL_PATH/spoolbuddy/.env"
+    if [[ ! -f "$env_file" ]]; then
+        warn "SpoolBuddy env file not found at $env_file — skipping kiosk key bootstrap"
+        return
+    fi
+
+    # CWD must be $INSTALL_PATH so `python -m backend.app.cli` finds the backend
+    # package on sys.path (matches the systemd unit's WorkingDirectory).
+    local kiosk_key
+    if ! kiosk_key="$(cd "$INSTALL_PATH" && sudo -u "$BAMBUDDY_SERVICE_USER" \
+            env DATA_DIR="$INSTALL_PATH/data" LOG_DIR="$INSTALL_PATH/logs" \
+            "$INSTALL_PATH/venv/bin/python" -m backend.app.cli kiosk-bootstrap --force)"; then
+        error "Failed to bootstrap SpoolBuddy kiosk API key"
+    fi
+
+    if [[ -z "$kiosk_key" || "$kiosk_key" != bb_* ]]; then
+        error "CLI returned an invalid API key (got: ${kiosk_key:0:8}...)"
+    fi
+
+    if ! grep -q '^SPOOLBUDDY_API_KEY=' "$env_file"; then
+        error "Sentinel 'SPOOLBUDDY_API_KEY=' line missing in $env_file"
+    fi
+
+    # Escape for sed replacement (the key is base64url-safe, no slashes, but be defensive)
+    local escaped_key
+    escaped_key=$(printf '%s\n' "$kiosk_key" | sed -e 's/[\/&]/\\&/g')
+    sed -i "s/^SPOOLBUDDY_API_KEY=.*/SPOOLBUDDY_API_KEY=${escaped_key}/" "$env_file"
+
+    success "SpoolBuddy kiosk API key provisioned"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # System Strip-Down (dedicated appliance — remove unnecessary services/packages)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1504,6 +1541,7 @@ main() {
         create_bambuddy_directories
         create_bambuddy_env
         create_bambuddy_service
+        bootstrap_spoolbuddy_kiosk_key
         echo ""
     fi
 
@@ -1532,10 +1570,7 @@ main() {
         echo -e "  ${BOLD}Next steps:${NC}"
         echo -e "    1. Reboot (required for kiosk, Plymouth splash, and hardware changes)"
         echo -e "    2. The touchscreen kiosk will start automatically after reboot"
-        echo -e "    3. On another device, open ${CYAN}http://$ip_addr:$BAMBUDDY_PORT${NC}"
-        echo -e "    4. Go to Settings -> API Keys and create an API key"
-        echo -e "    5. Update the API key in: ${CYAN}$INSTALL_PATH/spoolbuddy/.env${NC}"
-        echo -e "    6. Restart SpoolBuddy: ${CYAN}sudo systemctl restart spoolbuddy${NC}"
+        echo -e "    3. On another device, open ${CYAN}http://$ip_addr:$BAMBUDDY_PORT${NC} to complete first-run admin setup"
     fi
 
     echo ""
