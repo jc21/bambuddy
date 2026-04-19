@@ -4,6 +4,9 @@ All notable changes to Bambuddy will be documented in this file.
 
 ## [0.2.4b1] - Unreleased
 
+### Changed
+- **Docker runtime image on Debian Trixie** — The production Docker image now builds on `python:3.13-slim-trixie` instead of the Bookworm-based `python:3.13-slim`. Picks up ffmpeg 5 → 7 (HEVC/AV1 improvements for camera capture), OpenSSL 3.0 → 3.3, and two more years of APT package freshness. Frontend-builder stays on Bookworm until the Node.js image team publishes Trixie variants — users never see that stage.
+
 ## [0.2.3] - 2026-04-19
 
 ### New Features
