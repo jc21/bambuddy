@@ -2,7 +2,7 @@
 
 All notable changes to Bambuddy will be documented in this file.
 
-## [0.2.4b1] - Unreleased
+## [0.2.3.1] - 2026-04-20
 
 ### Fixed
 - **P1S Print Dispatches Stuck at IDLE Due to task_id Int32 Overflow** ([#1042](https://github.com/maziggy/bambuddy/issues/1042)) — Since the #1011 fix switched `project_id` / `subtask_id` / `task_id` from hardcoded `"0"` to `str(int(time.time() * 1000))`, each submission sent a 13-digit epoch-millisecond value (~1.7×10¹²). P1S firmware (observed on 01.10.00.00) clamps oversized task identity fields to signed int32 max (`2147483647`), so every dispatch looked identical from the printer's perspective — it treated a fresh print as a continuation of the prior FAILED job, returned `result: success` for `project_file` (command accepted), but then sat at `gcode_state: IDLE` with an empty `gcode_file` instead of transitioning to `PREPARE`/`RUNNING`. Thanks to @EdwardChamberlain for pinpointing the exact line and suggesting the mod fix. The three identity fields are now set to `str(int(time.time() * 1000) % 2_147_483_647 or 1)`: modulo keeps values inside the signed-int31 window with a ~24-day uniqueness cycle (more than enough for reprint deduplication), and `or 1` guards against the astronomically unlikely zero case (the printer rejects `task_id=0`). Regression test `test_submission_id_fits_signed_int32` asserts all three IDs are `< 2**31`. Two of @EdwardChamberlain's other suggestions — resolving `bed_type` from the sliced 3MF's per-plate JSON instead of hardcoding `"auto"`, and gating dispatch success on an actual state transition to `PREPARE`/`RUNNING` rather than on `project_file`'s `result: success` — are larger changes tracked separately.
