@@ -1878,7 +1878,14 @@ function PrinterCard({
 
   const homeAxesMutation = useMutation({
     mutationFn: (axes: 'z' | 'xy' | 'all') => api.homeAxes(printer.id, axes),
-    onSuccess: () => showToast(t('printers.bedJog.homingStarted')),
+    onSuccess: () => {
+      // Flip the session-scoped "warned" flag so the next bed-jog click doesn't re-prompt
+      // the not-homed modal. The flag is the same one "Move anyway" sets; after a successful
+      // auto-home request the printer is (or will shortly be) in a known-homed state, so
+      // prompting again in the same session is noise — #1052 follow-up.
+      try { sessionStorage.setItem(`bambuddy.bedJog.warned.${printer.id}`, '1'); } catch { /* ignore */ }
+      showToast(t('printers.bedJog.homingStarted'));
+    },
     onError: (error: Error) =>
       showToast(error.message || t('printers.toast.failedToSendCommand'), 'error'),
   });
