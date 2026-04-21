@@ -728,6 +728,7 @@ class BackgroundDispatchService:
                 source_file=file_path,
                 original_filename=lib_file.filename,
                 project_id=job.project_id,
+                created_by_id=job.requested_by_user_id,
             )
             if not archive:
                 raise RuntimeError("Failed to create archive")
@@ -854,6 +855,13 @@ class BackgroundDispatchService:
                 pre_state = getattr(printer_manager.get_status(job.printer_id), "state", None)
                 if pre_state:
                     asyncio.create_task(self._verify_print_response(job.printer_id, printer_name, pre_state))
+
+                if job.requested_by_user_id and job.requested_by_username:
+                    printer_manager.set_current_print_user(
+                        job.printer_id,
+                        job.requested_by_user_id,
+                        job.requested_by_username,
+                    )
 
                 await db.commit()
             except DispatchJobCancelled:
