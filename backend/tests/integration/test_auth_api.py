@@ -110,7 +110,7 @@ class TestAuthSetupAPI:
             json={
                 "auth_enabled": True,
                 "admin_username": "irrelevant",
-                "admin_password": "Ihk88LimT",
+                "admin_password": "NoSpecial1",
             },
         )
 
