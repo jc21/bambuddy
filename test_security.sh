@@ -220,7 +220,44 @@ scan_gitleaks() {
         echo "SKIP: 'gitleaks' not found. Install: go install github.com/zricethezav/gitleaks/v8@latest"
         return 2
     fi
-    "$bin" detect --source . --redact --no-banner --verbose 2>&1
+
+    local report="$PROJECT_ROOT/gitleaks-report.json"
+
+    echo "Scanning full git history (can take several minutes on large repos)..."
+    "$bin" detect --source . --redact --no-banner \
+        --max-target-megabytes=5 \
+        --report-format=json --report-path="$report" 2>&1
+    local exit_code=$?
+
+    if [ -f "$report" ]; then
+        python3 - "$report" << 'PYEOF'
+import json, sys, collections
+from pathlib import Path
+
+path = Path(sys.argv[1])
+findings = json.loads(path.read_text() or "[]")
+if not findings:
+    print()
+    print("No findings.")
+    sys.exit(0)
+
+by_rule = collections.Counter(f.get("RuleID", "?") for f in findings)
+by_file = collections.Counter(f.get("File", "?") for f in findings)
+
+print()
+print(f"{len(findings)} findings  (full details: {path.name})")
+print()
+print("By rule:")
+for rule, n in by_rule.most_common():
+    print(f"  {n:6d}  {rule}")
+print()
+print("Top 10 files by hit count:")
+for fp, n in by_file.most_common(10):
+    print(f"  {n:6d}  {fp}")
+PYEOF
+    fi
+
+    return $exit_code
 }
 
 # ── Job launcher (streams output live with prefix, captures to log) ──────
