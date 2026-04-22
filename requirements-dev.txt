@@ -13,3 +13,4 @@ pyOpenSSL>=26.0.0
 # Security scanning
 bandit[sarif]>=1.7.0
 pip-audit>=2.7.0
+ggshield>=1.49.0
