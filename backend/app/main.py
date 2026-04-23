@@ -3019,6 +3019,17 @@ async def on_print_complete(printer_id: int, data: dict):
 
             archive = await db.get(PrintArchive, archive_id)
             if archive:
+                # Back-fill created_by_id on reprint (#730): reprint reuses the
+                # source archive row rather than creating a new one, so an
+                # archive that was auto-created from a printer-initiated
+                # print (created_by_id=NULL) would otherwise stay unattributed
+                # forever. When we have a print-session user AND the archive
+                # has no attribution yet, credit the current user. Never
+                # overwrite an existing attribution — the original uploader
+                # keeps ownership.
+                _print_user_id = _print_user_info.get("user_id") if _print_user_info else None
+                if archive.created_by_id is None and _print_user_id is not None:
+                    archive.created_by_id = _print_user_id
                 p_info = printer_manager.get_printer(printer_id)
                 await write_log_entry(
                     db,
