@@ -3952,10 +3952,23 @@ export default {
       title: 'Auto-dispatch',
       description: 'Automatically start prints when added to queue. When off, prints wait for manual dispatch.',
     },
+    tailscaleDisabled: {
+      title: 'Tailscale integration',
+      description: 'When enabled, uses Tailscale for trusted TLS certs. Disable to use self-signed cert only.',
+    },
     setupRequired: {
       title: 'Setup Required',
       description: 'The virtual printer feature requires additional system configuration before it will work. This includes port forwarding, firewall rules, and platform-specific settings.',
       readGuide: 'Read the setup guide before enabling',
+    },
+    tailscale: {
+      connected: 'Tailscale connected',
+      notAvailable: 'Tailscale not active',
+      trustedCert: "Let's Encrypt cert — no CA setup needed",
+      notAvailableHint: 'Install Tailscale for trusted TLS certs',
+      disableTitle: 'Disable Tailscale integration',
+      enabledHint: 'Auto-detect Tailscale and use Let\'s Encrypt cert when available',
+      disabledHint: 'Tailscale disabled — using self-signed cert',
     },
     howItWorks: {
       title: 'How it works',
