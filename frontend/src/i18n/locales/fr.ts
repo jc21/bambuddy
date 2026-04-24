@@ -3907,6 +3907,7 @@ export default {
     toast: {
       updated: 'Réglages virtuels mis à jour',
       failedToUpdate: 'Échec mise à jour',
+      tailscaleNotAvailable: 'Tailscale n\'est pas installé sur cet hôte. Installez Tailscale puis réessayez.',
       accessCodeRequired: 'Code d\'accès requis',
       targetPrinterRequired: 'Imprimante cible requise',
       bindIpRequired: 'Veuillez d\'abord définir une adresse IP',

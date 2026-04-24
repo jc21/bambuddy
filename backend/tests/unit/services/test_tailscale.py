@@ -211,6 +211,8 @@ class TestVirtualPrinterInstanceTailscale:
     def instance(self, tmp_path):
         from backend.app.services.virtual_printer.manager import VirtualPrinterInstance
 
+        # Tailscale is opt-in (default True); tests in this class exercise the enabled
+        # path, so explicitly opt in.
         return VirtualPrinterInstance(
             vp_id=1,
             name="TestPrinter",
@@ -218,6 +220,7 @@ class TestVirtualPrinterInstanceTailscale:
             model="C11",
             access_code="12345678",
             serial_suffix="391800001",
+            tailscale_disabled=False,
             base_dir=tmp_path,
         )
 
@@ -333,8 +336,8 @@ class TestVirtualPrinterInstanceTailscale:
         assert instance.tailscale_fqdn is None
 
     @pytest.mark.asyncio
-    async def test_tailscale_enabled_by_default_queries_tailscale(self, instance):
-        """When tailscale_disabled=False (default), Tailscale is queried as usual."""
+    async def test_tailscale_enabled_explicitly_queries_tailscale(self, instance):
+        """When tailscale_disabled=False (user opted in), Tailscale is queried as usual."""
         from backend.app.services.virtual_printer.tailscale import TailscaleStatus
 
         mock_ts = MagicMock()

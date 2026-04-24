@@ -3984,6 +3984,7 @@ export default {
     toast: {
       updated: 'Virtuelle Druckereinstellungen aktualisiert',
       failedToUpdate: 'Einstellungen konnten nicht aktualisiert werden',
+      tailscaleNotAvailable: 'Tailscale ist auf diesem Host nicht installiert. Installiere Tailscale zuerst und versuche es dann erneut.',
       accessCodeRequired: 'Bitte zuerst einen Zugangscode setzen',
       targetPrinterRequired: 'Bitte zuerst einen Zieldrucker auswählen',
       bindIpRequired: 'Bitte zuerst eine Bind-IP setzen',

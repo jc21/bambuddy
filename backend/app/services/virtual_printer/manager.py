@@ -113,7 +113,7 @@ class VirtualPrinterInstance:
         auto_dispatch: bool = True,
         bind_ip: str = "",
         remote_interface_ip: str = "",
-        tailscale_disabled: bool = False,
+        tailscale_disabled: bool = True,
         base_dir: Path,
         session_factory: Callable | None = None,
     ):

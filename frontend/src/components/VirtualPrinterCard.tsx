@@ -43,7 +43,7 @@ export function VirtualPrinterCard({ printer, models }: VirtualPrinterCardProps)
   const [localRemoteInterfaceIp, setLocalRemoteInterfaceIp] = useState(printer.remote_interface_ip || '');
   const [localModel, setLocalModel] = useState(printer.model || '');
   const [localAutoDispatch, setLocalAutoDispatch] = useState(printer.auto_dispatch ?? true);
-  const [localTailscaleDisabled, setLocalTailscaleDisabled] = useState(printer.tailscale_disabled ?? false);
+  const [localTailscaleDisabled, setLocalTailscaleDisabled] = useState(printer.tailscale_disabled ?? true);
   const [showAccessCode, setShowAccessCode] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -59,7 +59,7 @@ export function VirtualPrinterCard({ printer, models }: VirtualPrinterCardProps)
       setLocalRemoteInterfaceIp(printer.remote_interface_ip || '');
       setLocalModel(printer.model || '');
       setLocalAutoDispatch(printer.auto_dispatch ?? true);
-      setLocalTailscaleDisabled(printer.tailscale_disabled ?? false);
+      setLocalTailscaleDisabled(printer.tailscale_disabled ?? true);
     }
   }, [printer, pendingAction]);
 
@@ -84,11 +84,18 @@ export function VirtualPrinterCard({ printer, models }: VirtualPrinterCardProps)
       setPendingAction(null);
     },
     onError: (error: Error) => {
-      showToast(error.message || t('virtualPrinter.toast.failedToUpdate'), 'error');
+      // Specific: the backend rejected "enable Tailscale" because the binary isn't installed.
+      // Surface a clear reason instead of the raw error code.
+      if (error.message === 'tailscale_not_available') {
+        showToast(t('virtualPrinter.toast.tailscaleNotAvailable'), 'error');
+      } else {
+        showToast(error.message || t('virtualPrinter.toast.failedToUpdate'), 'error');
+      }
       setLocalEnabled(printer.enabled);
       setLocalMode((printer.mode === 'queue' ? 'review' : printer.mode) as LocalMode);
       setLocalTargetPrinterId(printer.target_printer_id);
       setLocalBindIp(printer.bind_ip || '');
+      setLocalTailscaleDisabled(printer.tailscale_disabled ?? true);
       setPendingAction(null);
     },
   });

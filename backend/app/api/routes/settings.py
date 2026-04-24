@@ -853,7 +853,7 @@ async def get_virtual_printer_settings(
         "model": model or DEFAULT_VIRTUAL_PRINTER_MODEL,
         "target_printer_id": int(target_printer_id) if target_printer_id else None,
         "remote_interface_ip": remote_interface_ip or "",
-        "tailscale_disabled": tailscale_disabled_raw == "true" if tailscale_disabled_raw else False,
+        "tailscale_disabled": tailscale_disabled_raw == "true" if tailscale_disabled_raw else True,
         "status": virtual_printer_manager.get_status(),
     }
 
@@ -894,7 +894,8 @@ async def update_virtual_printer_settings(
     current_target_id = int(current_target_id_str) if current_target_id_str else None
     current_remote_iface = await get_setting(db, "virtual_printer_remote_interface_ip") or ""
     current_ts_disabled_raw = await get_setting(db, "virtual_printer_tailscale_disabled")
-    current_ts_disabled = current_ts_disabled_raw == "true" if current_ts_disabled_raw else False
+    # Default True (opt-in) when the setting has never been saved — matches the model default.
+    current_ts_disabled = current_ts_disabled_raw == "true" if current_ts_disabled_raw else True
 
     # Apply updates
     new_enabled = enabled if enabled is not None else current_enabled
@@ -904,6 +905,21 @@ async def update_virtual_printer_settings(
     new_target_id = target_printer_id if target_printer_id is not None else current_target_id
     new_remote_iface = remote_interface_ip if remote_interface_ip is not None else current_remote_iface
     new_ts_disabled = tailscale_disabled if tailscale_disabled is not None else current_ts_disabled
+
+    # Guard: enabling Tailscale (disabled=False) requires the binary to be present. Otherwise
+    # the toggle looks like it worked but the service will silently fall back to self-signed.
+    if tailscale_disabled is False and current_ts_disabled is True:
+        from backend.app.services.virtual_printer.tailscale import tailscale_service
+
+        ts_status = await tailscale_service.get_status()
+        if not ts_status.available:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "detail": "tailscale_not_available",
+                    "reason": ts_status.error or "tailscale binary not found",
+                },
+            )
 
     # Validate mode
     # "review" is the new name for "queue" (pending review before archiving)

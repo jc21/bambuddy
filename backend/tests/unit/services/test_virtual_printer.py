@@ -449,7 +449,7 @@ class TestVirtualPrinterManager:
             "remote_interface_ip": "",
             "target_printer_id": None,
             "auto_dispatch": True,
-            "tailscale_disabled": False,
+            "tailscale_disabled": True,  # Opt-in default (#1070 UX fix)
             "position": 0,
         }
         defaults.update(overrides)

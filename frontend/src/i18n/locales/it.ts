@@ -3906,6 +3906,7 @@ export default {
     toast: {
       updated: 'Impostazioni stampante virtuale aggiornate',
       failedToUpdate: 'Aggiornamento impostazioni fallito',
+      tailscaleNotAvailable: 'Tailscale non è installato su questo host. Installa prima Tailscale, poi riprova.',
       accessCodeRequired: 'Imposta prima un codice accesso',
       targetPrinterRequired: 'Seleziona prima una stampante target',
       bindIpRequired: 'Impostare prima un indirizzo IP',

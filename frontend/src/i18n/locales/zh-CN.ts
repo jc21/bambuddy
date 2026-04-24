@@ -3972,6 +3972,7 @@ export default {
     toast: {
       updated: '虚拟打印机设置已更新',
       failedToUpdate: '更新设置失败',
+      tailscaleNotAvailable: '此主机上未安装 Tailscale。请先安装 Tailscale，然后重试。',
       accessCodeRequired: '请先设置访问码',
       targetPrinterRequired: '请先选择目标打印机',
       bindIpRequired: '请先设置绑定 IP',

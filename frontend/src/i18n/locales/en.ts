@@ -3992,6 +3992,7 @@ export default {
     toast: {
       updated: 'Virtual printer settings updated',
       failedToUpdate: 'Failed to update settings',
+      tailscaleNotAvailable: 'Tailscale is not installed on this host. Install Tailscale first, then try again.',
       accessCodeRequired: 'Please set an access code first',
       targetPrinterRequired: 'Please select a target printer first',
       bindIpRequired: 'Please set a bind IP first',
