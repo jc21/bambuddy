@@ -3870,6 +3870,10 @@ export default {
       title: 'Avvio automatico',
       description: 'Avvia automaticamente le stampe aggiunte alla coda. Se disattivato, le stampe attendono l\'avvio manuale.',
     },
+    tailscaleDisabled: {
+      title: 'Integrazione Tailscale',
+      description: 'Quando abilitato, utilizza Tailscale per certificati TLS affidabili. Disabilita per utilizzare solo certificati auto-firmati.',
+    },
     setupRequired: {
       title: 'Configurazione necessaria',
       description: 'La stampante virtuale richiede configurazioni di sistema aggiuntive prima di funzionare. Include port forwarding, regole firewall e impostazioni specifiche della piattaforma.',

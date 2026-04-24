@@ -65,17 +65,18 @@ export function VirtualPrinterCard({ printer, models }: VirtualPrinterCardProps)
     }
     // Legacy fallback for HTTP (common when Bambuddy is reached over LAN / tailnet IP).
     if (!ok) {
+      const ta = document.createElement('textarea');
+      ta.value = fqdn;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
       try {
-        const ta = document.createElement('textarea');
-        ta.value = fqdn;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
         ta.select();
         ok = document.execCommand('copy');
-        document.body.removeChild(ta);
       } catch {
         ok = false;
+      } finally {
+        if (ta.parentNode) ta.parentNode.removeChild(ta);
       }
     }
     if (ok) {
@@ -257,23 +258,6 @@ export function VirtualPrinterCard({ printer, models }: VirtualPrinterCardProps)
           {localRemoteInterfaceIp && (
             <span className="text-[10px] text-bambu-gray flex-shrink-0 font-mono">{localRemoteInterfaceIp}</span>
           )}
-          {printer.status?.tailscale_fqdn && (
-            <span className="flex items-center gap-1 text-xs text-green-400/70 flex-shrink-0">
-              <ShieldCheck className="w-3 h-3" />
-              <span className="font-mono text-[10px]">{printer.status.tailscale_fqdn}</span>
-              <button
-                onClick={handleCopyFqdn}
-                className="p-0.5 rounded hover:bg-bambu-dark-tertiary transition-colors"
-                title={fqdnCopied ? t('printers.copied') : t('printers.copyToClipboard')}
-              >
-                {fqdnCopied ? (
-                  <Check className="w-3 h-3 text-bambu-green" />
-                ) : (
-                  <Copy className="w-3 h-3" />
-                )}
-              </button>
-            </span>
-          )}
           <div className="ml-auto flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={handleToggleEnabled}
@@ -306,14 +290,35 @@ export function VirtualPrinterCard({ printer, models }: VirtualPrinterCardProps)
                 onKeyDown={(e) => e.key === 'Enter' && handleNameChange()}
                 className="flex-1 text-sm text-white bg-bambu-dark-secondary border border-bambu-dark-tertiary rounded-md px-3 py-1.5 focus:border-bambu-green focus:outline-none"
               />
-              <span className="text-xs text-bambu-gray font-mono">{printer.serial}</span>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
-                className="p-1.5 text-bambu-gray hover:text-red-400 transition-colors"
+                className="p-1.5 text-bambu-gray hover:text-red-400 transition-colors flex-shrink-0"
                 title={t('common.delete')}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Tailscale FQDN (when active) + serial — compact info row */}
+            <div className="flex items-center gap-2 -mt-2">
+              {printer.status?.tailscale_fqdn && (
+                <span className="flex items-center gap-1 text-green-400/70 min-w-0">
+                  <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="font-mono text-xs truncate">{printer.status.tailscale_fqdn}</span>
+                  <button
+                    onClick={handleCopyFqdn}
+                    className="p-0.5 rounded hover:bg-bambu-dark-tertiary text-bambu-gray hover:text-white transition-colors flex-shrink-0"
+                    title={fqdnCopied ? t('printers.copied') : t('printers.copyToClipboard')}
+                  >
+                    {fqdnCopied ? (
+                      <Check className="w-3.5 h-3.5 text-bambu-green" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </span>
+              )}
+              <span className="text-xs text-bambu-gray font-mono ml-auto flex-shrink-0">{printer.serial}</span>
             </div>
 
             {/* Mode */}

@@ -3884,6 +3884,10 @@ export default {
       title: 'Envio automático',
       description: 'Iniciar impressões automaticamente quando adicionadas à fila. Quando desativado, as impressões aguardam envio manual.',
     },
+    tailscaleDisabled: {
+      title: 'Integração Tailscale',
+      description: 'Quando ativado, usa Tailscale para certificados TLS confiáveis. Desative para usar apenas certificado autoassinado.',
+    },
     setupRequired: {
       title: 'Configuração Necessária',
       description: 'O recurso de impressora virtual requer configuração adicional do sistema antes de funcionar. Isso inclui encaminhamento de portas, regras de firewall e configurações específicas da plataforma.',

@@ -3936,6 +3936,10 @@ export default {
       title: '自动派发',
       description: '添加到队列时自动开始打印。关闭后，打印任务等待手动派发。',
     },
+    tailscaleDisabled: {
+      title: 'Tailscale 集成',
+      description: '启用后，使用 Tailscale 获取受信任的 TLS 证书。禁用则仅使用自签名证书。',
+    },
     setupRequired: {
       title: '需要设置',
       description: '虚拟打印机功能需要额外的系统配置才能工作。包括端口转发、防火墙规则和平台特定设置。',
