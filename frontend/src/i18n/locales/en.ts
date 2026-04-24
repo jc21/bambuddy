@@ -3961,15 +3961,6 @@ export default {
       description: 'The virtual printer feature requires additional system configuration before it will work. This includes port forwarding, firewall rules, and platform-specific settings.',
       readGuide: 'Read the setup guide before enabling',
     },
-    tailscale: {
-      connected: 'Tailscale connected',
-      notAvailable: 'Tailscale not active',
-      trustedCert: "Let's Encrypt cert — no CA setup needed",
-      notAvailableHint: 'Install Tailscale for trusted TLS certs',
-      disableTitle: 'Disable Tailscale integration',
-      enabledHint: 'Auto-detect Tailscale and use Let\'s Encrypt cert when available',
-      disabledHint: 'Tailscale disabled — using self-signed cert',
-    },
     howItWorks: {
       title: 'How it works',
       step1: 'On the same LAN, virtual printers appear in your slicer (Bambu Studio / OrcaSlicer) automatically via discovery. From other networks, add them manually by IP address and access code.',

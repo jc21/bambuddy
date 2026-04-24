@@ -3879,15 +3879,6 @@ export default {
       description: 'La stampante virtuale richiede configurazioni di sistema aggiuntive prima di funzionare. Include port forwarding, regole firewall e impostazioni specifiche della piattaforma.',
       readGuide: 'Leggi la guida prima di abilitare',
     },
-    tailscale: {
-      connected: 'Tailscale connesso',
-      notAvailable: 'Tailscale non attivo',
-      trustedCert: "Certificato Let's Encrypt — nessuna configurazione CA richiesta",
-      notAvailableHint: 'Installa Tailscale per certificati TLS attendibili',
-      disableTitle: 'Disabilita integrazione Tailscale',
-      enabledHint: 'Rileva automaticamente Tailscale e usa il certificato Let\'s Encrypt se disponibile',
-      disabledHint: 'Tailscale disabilitato — viene usato il certificato auto-firmato',
-    },
     howItWorks: {
       title: 'Come funziona',
       step1: 'Sulla stessa LAN, le stampanti virtuali appaiono automaticamente nel tuo slicer (Bambu Studio / OrcaSlicer). Da altre reti, aggiungile manualmente tramite indirizzo IP e codice di accesso.',
