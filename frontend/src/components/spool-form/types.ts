@@ -23,7 +23,6 @@ export interface SpoolFormData {
   slicer_filament: string;
   note: string;
   cost_per_kg: number | null;
-  storage_location: string;
 }
 
 export const defaultFormData: SpoolFormData = {
@@ -39,7 +38,6 @@ export const defaultFormData: SpoolFormData = {
   slicer_filament: '',
   note: '',
   cost_per_kg: null,
-  storage_location: '',
 };
 
 // Printer with calibrations type
@@ -125,15 +123,10 @@ export interface ValidationResult {
   errors: Partial<Record<keyof SpoolFormData, string>>;
 }
 
-export function validateForm(
-  formData: SpoolFormData,
-  quickAdd = false,
-  spoolmanMode = false,
-): ValidationResult {
+export function validateForm(formData: SpoolFormData, quickAdd = false): ValidationResult {
   const errors: Partial<Record<keyof SpoolFormData, string>> = {};
 
-  // Quick-add and Spoolman mode only require material
-  if (quickAdd || spoolmanMode) {
+  if (quickAdd) {
     if (!formData.material) {
       errors.material = 'Material is required';
     }

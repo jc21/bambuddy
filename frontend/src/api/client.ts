@@ -2,15 +2,6 @@ import type { ArchivePlatesResponse, LibraryFilePlatesResponse } from '../types/
 
 const API_BASE = '/api/v1';
 
-export class ApiError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-  }
-}
-
 // Auth token storage
 // By default tokens are stored in sessionStorage (tab-scoped, cleared on close).
 // When the token originates from the ?token= URL param (kiosk bootstrap), it is
@@ -109,7 +100,7 @@ async function request<T>(
       }
     }
 
-    throw new ApiError(message, response.status);
+    throw new Error(message);
   }
 
   // Handle empty responses (204 No Content, etc.)
@@ -2121,13 +2112,6 @@ export interface InventorySpool {
   last_scale_weight: number | null;
   last_weighed_at: string | null;
   k_profiles?: SpoolKProfile[];
-  storage_location?: string | null;
-}
-
-export interface SpoolmanBulkCreateResult {
-  created: InventorySpool[];
-  requested_count: number;
-  failed_count: number;
 }
 
 export interface SpoolUsageRecord {
@@ -4233,44 +4217,6 @@ export const api = {
   getFilamentPresets: () =>
     request<SlicerSetting[]>('/cloud/filaments'),
 
-  // Spoolman Inventory proxy (unified UI when Spoolman is enabled)
-  getSpoolmanInventorySpools: (includeArchived = false) =>
-    request<InventorySpool[]>(`/spoolman/inventory/spools?include_archived=${includeArchived}`),
-  getSpoolmanInventorySpool: (id: number) =>
-    request<InventorySpool>(`/spoolman/inventory/spools/${id}`),
-  createSpoolmanInventorySpool: (data: Omit<InventorySpool, 'id' | 'archived_at' | 'created_at' | 'updated_at' | 'k_profiles'>) =>
-    request<InventorySpool>('/spoolman/inventory/spools', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  bulkCreateSpoolmanInventorySpools: (
-    data: Omit<InventorySpool, 'id' | 'archived_at' | 'created_at' | 'updated_at' | 'k_profiles'>,
-    quantity: number,
-  ) =>
-    request<SpoolmanBulkCreateResult | InventorySpool[]>('/spoolman/inventory/spools/bulk', {
-      method: 'POST',
-      body: JSON.stringify({ spool: data, quantity }),
-    }),
-  updateSpoolmanInventorySpool: (
-    id: number,
-    data: Partial<Omit<InventorySpool, 'id' | 'archived_at' | 'created_at' | 'updated_at' | 'k_profiles'>>,
-  ) =>
-    request<InventorySpool>(`/spoolman/inventory/spools/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
-  deleteSpoolmanInventorySpool: (id: number) =>
-    request<{ status: string }>(`/spoolman/inventory/spools/${id}`, { method: 'DELETE' }),
-  archiveSpoolmanInventorySpool: (id: number) =>
-    request<InventorySpool>(`/spoolman/inventory/spools/${id}/archive`, { method: 'POST' }),
-  restoreSpoolmanInventorySpool: (id: number) =>
-    request<InventorySpool>(`/spoolman/inventory/spools/${id}/restore`, { method: 'POST' }),
-  syncSpoolmanSpoolWeight: (spoolId: number, weightGrams: number) =>
-    request<{ status: string; weight_used: number }>(`/spoolman/inventory/spools/${spoolId}/weight`, {
-      method: 'PATCH',
-      body: JSON.stringify({ weight_grams: weightGrams }),
-    }),
-
   // Updates
   getVersion: () => request<VersionInfo>('/updates/version'),
   checkForUpdates: () => request<UpdateCheckResult>('/updates/check'),
@@ -5799,7 +5745,7 @@ export const spoolbuddyApi = {
     request<{ public_key: string }>('/spoolbuddy/ssh/public-key'),
 
   writeTag: (deviceId: string, spoolId: number) =>
-    request<{ status: string; warnings?: string[] }>('/spoolbuddy/nfc/write-tag', {
+    request<{ status: string }>('/spoolbuddy/nfc/write-tag', {
       method: 'POST',
       body: JSON.stringify({ device_id: deviceId, spool_id: spoolId }),
     }),
