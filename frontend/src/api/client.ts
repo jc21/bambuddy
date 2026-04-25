@@ -2,23 +2,33 @@ import type { ArchivePlatesResponse, LibraryFilePlatesResponse } from '../types/
 
 const API_BASE = '/api/v1';
 
-// Auth token storage
-// By default tokens are stored in sessionStorage (tab-scoped, cleared on close).
-// When the token originates from the ?token= URL param (kiosk bootstrap), it is
-// additionally persisted in localStorage so the kiosk survives page reloads.
+// 'persistent' also writes to localStorage so the token survives tab close
+// (used by Remember Me and the ?token= kiosk bootstrap).
 let authToken: string | null =
   sessionStorage.getItem('auth_token') ?? localStorage.getItem('auth_token');
 
-export function setAuthToken(token: string | null, persist = false) {
+export type TokenPersistence = 'session' | 'persistent';
+
+export function setAuthToken(token: string | null, persistence: TokenPersistence = 'session') {
   authToken = token;
-  if (token) {
-    sessionStorage.setItem('auth_token', token);
-    if (persist) {
+  try {
+    if (token) {
+      sessionStorage.setItem('auth_token', token);
+    } else {
+      sessionStorage.removeItem('auth_token');
+    }
+  } catch (err) {
+    // Storage unavailable (quota exceeded, private mode): in-memory token still works for this tab.
+    console.warn('setAuthToken: sessionStorage unavailable, token kept in-memory only', err);
+  }
+  try {
+    if (!token) {
+      localStorage.removeItem('auth_token');
+    } else if (persistence === 'persistent') {
       localStorage.setItem('auth_token', token);
     }
-  } else {
-    sessionStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_token');
+  } catch (err) {
+    console.warn('setAuthToken: localStorage operation failed', err);
   }
 }
 
@@ -2521,6 +2531,8 @@ export interface OIDCProvider {
   is_enabled: boolean;
   auto_create_users: boolean;
   auto_link_existing_accounts: boolean;
+  email_claim: string;
+  require_email_verified: boolean;
   icon_url?: string | null;
 }
 
@@ -2533,6 +2545,8 @@ export interface OIDCProviderCreate {
   is_enabled?: boolean;
   auto_create_users?: boolean;
   auto_link_existing_accounts?: boolean;
+  email_claim?: string;
+  require_email_verified?: boolean;
   icon_url?: string | null;
 }
 

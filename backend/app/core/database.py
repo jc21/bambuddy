@@ -214,22 +214,66 @@ async def init_db():
 
 
 async def _safe_execute(conn, sql):
-    """Execute a migration statement, ignoring 'already exists' errors.
+    """Execute a DDL migration statement, silently ignoring idempotency errors.
 
-    Uses a savepoint so that a failed statement doesn't poison the
-    surrounding transaction (required for PostgreSQL).
+    'already exists', 'duplicate column name' (SQLite ADD COLUMN), 'no such column'
+    (SQLite RENAME COLUMN), 'duplicate key', and the compound
+    'column … does not exist' (PostgreSQL RENAME COLUMN idempotency) are swallowed
+    so that re-running DDL migrations is safe.  The compound check additionally
+    requires the SQL to be a RENAME COLUMN statement so that "does not exist" errors
+    from ADD COLUMN or CREATE INDEX (which would indicate schema corruption, not
+    idempotency) are never silently swallowed.
+    Any other error is logged and re-raised — callers must not assume silent
+    recovery, as a failure will abort the migration sequence and prevent
+    application startup.
+
+    Only use for DDL statements (ALTER TABLE, CREATE INDEX, etc.).
+    For DML backfills (UPDATE, DELETE) use conn.execute() directly inside
+    async with conn.begin_nested() so failures are never silently swallowed.
+
+    Uses a savepoint so that a failed statement doesn't poison the surrounding
+    transaction (required for PostgreSQL).
     """
     from sqlalchemy import text
 
     try:
         async with conn.begin_nested():
             await conn.execute(text(sql))
-    except (OperationalError, ProgrammingError):
-        pass
+    except (OperationalError, ProgrammingError) as exc:
+        msg = str(exc).lower()
+        # Only swallow "column … does not exist" for RENAME COLUMN — not for ADD COLUMN
+        # or CREATE INDEX where it would indicate schema corruption, not idempotency.
+        column_not_exists = "rename column" in sql.lower() and "column" in msg and "does not exist" in msg
+        if (
+            not any(k in msg for k in ("already exists", "duplicate key", "duplicate column name", "no such column"))
+            and not column_not_exists
+        ):
+            logger.error("Migration statement failed: %s | SQL: %.200s", exc, sql)
+            raise
+
+
+async def _migrate_normalize_printer_ids(conn) -> None:
+    from sqlalchemy import text
+
+    async with conn.begin_nested():
+        if is_sqlite():
+            await conn.execute(text("UPDATE api_keys SET printer_ids = NULL WHERE printer_ids = '[]'"))
+        else:
+            await conn.execute(text("UPDATE api_keys SET printer_ids = NULL WHERE printer_ids::text = '[]'"))
 
 
 async def run_migrations(conn):
-    """Add new columns to existing tables if they don't exist."""
+    """Run all schema migrations and data backfills on startup.
+
+    Includes ALTER TABLE (add columns, rename columns, add constraints),
+    CREATE INDEX, CREATE TRIGGER, data UPDATE backfills, and table recreations
+    for complex SQLite schema changes that ALTER TABLE cannot handle.
+
+    DDL statements are wrapped in _safe_execute for idempotency.
+    DML backfills (UPDATE/DELETE) are executed directly via conn.execute()
+    inside begin_nested() so any failure is always fatal and never silently
+    swallowed.
+    """
     from sqlalchemy import text
 
     # Migration: Add is_favorite column to print_archives
@@ -1403,7 +1447,9 @@ async def run_migrations(conn):
 
     # Migration: Normalize empty printer_ids [] to NULL (global access) on API keys
     # Previously both None and [] meant "all printers"; now [] means "no printers"
-    await _safe_execute(conn, "UPDATE api_keys SET printer_ids = NULL WHERE printer_ids = '[]'")
+    # PostgreSQL stores printer_ids as JSONB; comparing JSONB to a string literal fails
+    # with "operator does not exist: jsonb = unknown" — cast the literal to jsonb explicitly.
+    await _migrate_normalize_printer_ids(conn)
 
     # Migration: Add auth_source column to users for LDAP support (#794)
     await _safe_execute(conn, "ALTER TABLE users ADD COLUMN auth_source VARCHAR(20) DEFAULT 'local' NOT NULL")
@@ -1434,8 +1480,13 @@ async def run_migrations(conn):
                 )
                 await conn.execute(text(f"PRAGMA schema_version = {schema_version + 1}"))
                 await conn.execute(text("PRAGMA writable_schema = OFF"))
-        except (OperationalError, ProgrammingError):
-            pass
+        except (OperationalError, ProgrammingError) as exc:
+            logger.error(
+                "Failed to remove NOT NULL from users.password_hash via writable_schema — "
+                "OIDC/LDAP user creation will fail on this install: %s",
+                exc,
+                exc_info=True,
+            )
     else:
         await _safe_execute(conn, "ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL")
 
@@ -1489,7 +1540,67 @@ async def run_migrations(conn):
     await _safe_execute(conn, "ALTER TABLE auth_ephemeral_tokens ADD COLUMN challenge_id VARCHAR(128)")
 
     # Migration: Add auto_link_existing_accounts column to oidc_providers (M-4)
-    await _safe_execute(conn, "ALTER TABLE oidc_providers ADD COLUMN auto_link_existing_accounts BOOLEAN DEFAULT 1")
+    # Postgres rejects `DEFAULT 0` for BOOLEAN columns.
+    if is_sqlite():
+        await _safe_execute(conn, "ALTER TABLE oidc_providers ADD COLUMN auto_link_existing_accounts BOOLEAN DEFAULT 0")
+    else:
+        await _safe_execute(
+            conn, "ALTER TABLE oidc_providers ADD COLUMN auto_link_existing_accounts BOOLEAN DEFAULT false"
+        )
+
+    # Migration: Azure Entra ID support — configurable email claim and verification requirement
+    await _safe_execute(conn, "ALTER TABLE oidc_providers ADD COLUMN email_claim VARCHAR(64) DEFAULT 'email'")
+    # Postgres rejects `DEFAULT 1` for BOOLEAN columns.
+    if is_sqlite():
+        await _safe_execute(conn, "ALTER TABLE oidc_providers ADD COLUMN require_email_verified BOOLEAN DEFAULT 1")
+    else:
+        await _safe_execute(conn, "ALTER TABLE oidc_providers ADD COLUMN require_email_verified BOOLEAN DEFAULT true")
+    # SEC-1 backfill: reset auto_link on rows where the combined state is unsafe.
+    # Runs BEFORE the CHECK constraint below so existing installs that have
+    # auto_link=TRUE + unsafe email settings self-heal rather than failing when
+    # PostgreSQL validates ADD CONSTRAINT against existing rows ("check constraint
+    # is violated by some row").  On fresh installs the column defaults guarantee
+    # this UPDATE matches zero rows.  TRUE/FALSE literals are accepted by both
+    # SQLite (≥ 3.23) and PostgreSQL — no dialect branch needed.
+    try:
+        async with conn.begin_nested():
+            await conn.execute(
+                text(
+                    "UPDATE oidc_providers SET auto_link_existing_accounts = FALSE "
+                    "WHERE auto_link_existing_accounts = TRUE "
+                    "AND (require_email_verified = FALSE OR email_claim != 'email')"
+                )
+            )
+    except Exception as exc:
+        logger.error(
+            "SEC-1 safety backfill FAILED — auto_link_existing_accounts may remain enabled "
+            "on providers with unsafe email settings: %s",
+            exc,
+            exc_info=True,
+        )
+        raise
+
+    # SEC-1/SEC-6: Add DB-level CHECK constraint for existing PostgreSQL installs.
+    # SQLite does not support ALTER TABLE ADD CONSTRAINT — handled by __table_args__ at creation.
+    # Runs AFTER the backfill so legacy unsafe rows don't fail constraint validation.
+    if not is_sqlite():
+        try:
+            async with conn.begin_nested():
+                await conn.execute(
+                    text(
+                        "ALTER TABLE oidc_providers ADD CONSTRAINT ck_auto_link_requires_verified_email_claim "
+                        "CHECK (auto_link_existing_accounts = FALSE OR (require_email_verified = TRUE AND email_claim = 'email'))"
+                    )
+                )
+        except (OperationalError, ProgrammingError) as exc:
+            msg = str(exc).lower()
+            if "already exists" not in msg:
+                logger.error(
+                    "Security constraint migration FAILED — auto_link safety constraint may not be enforced: %s",
+                    exc,
+                    exc_info=True,
+                )
+                raise
 
     # Migration: Add password_changed_at to users (M-R7-B)
     # Tracks the last time a user's password was changed/reset.  JWTs whose iat
@@ -1505,10 +1616,8 @@ async def run_migrations(conn):
     # tokens could never be invalidated via the freshness check.  Setting it to
     # created_at is conservative: any token issued before the account was created
     # is always invalid, so this is a safe lower bound.
-    await _safe_execute(
-        conn,
-        "UPDATE users SET password_changed_at = created_at WHERE password_changed_at IS NULL",
-    )
+    async with conn.begin_nested():
+        await conn.execute(text("UPDATE users SET password_changed_at = created_at WHERE password_changed_at IS NULL"))
 
     # Migration: Provenance columns on library_files for MakerWorld imports.
     # source_url is indexed so "already imported" dedupe lookups stay O(log N)
@@ -1542,11 +1651,22 @@ async def run_migrations(conn):
     # every restart. Dedupe (keep lowest id per key) and add the missing unique index
     # before seeding. Safe/idempotent on both dialects — fresh installs already have
     # no dupes and `create_all` already emits the index.
-    await _safe_execute(
-        conn,
-        "DELETE FROM settings WHERE id NOT IN (SELECT MIN(id) FROM settings GROUP BY key)",
-    )
+    async with conn.begin_nested():
+        await conn.execute(text("DELETE FROM settings WHERE id NOT IN (SELECT MIN(id) FROM settings GROUP BY key)"))
     await _safe_execute(conn, "CREATE UNIQUE INDEX IF NOT EXISTS ix_settings_key ON settings(key)")
+
+    # Migration: Normalise provider_email to lowercase (SEC-3).
+    # Required for Entra ID where UPN/email claims may arrive in mixed case.
+    # LOWER() is supported by both SQLite and PostgreSQL; the UPDATE is idempotent.
+    # Executed directly (not via _safe_execute) so any column-reference failure
+    # is always fatal and never silently swallowed.
+    async with conn.begin_nested():
+        await conn.execute(
+            text(
+                "UPDATE user_oidc_links SET provider_email = LOWER(provider_email) "
+                "WHERE provider_email IS NOT NULL AND provider_email != LOWER(provider_email)"
+            )
+        )
 
     # Seed default settings keys that must exist on fresh install
     default_settings = [
