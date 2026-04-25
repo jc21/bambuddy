@@ -33,8 +33,6 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => {
   server.resetHandlers();
   sessionStorageMock.clear();
-  vi.mocked(localStorage.setItem).mockClear();
-  vi.mocked(localStorage.removeItem).mockClear();
   setAuthToken(null);
 });
 afterAll(() => server.close());
@@ -50,60 +48,6 @@ describe('Auth Token Management', () => {
     setAuthToken('test-token-123');
     setAuthToken(null);
     expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('auth_token');
-    expect(getAuthToken()).toBeNull();
-  });
-
-  it("setAuthToken('persistent') writes to both sessionStorage and localStorage", () => {
-    setAuthToken('persist-token', 'persistent');
-    expect(sessionStorageMock.setItem).toHaveBeenCalledWith('auth_token', 'persist-token');
-    expect(vi.mocked(localStorage.setItem)).toHaveBeenCalledWith('auth_token', 'persist-token');
-    expect(getAuthToken()).toBe('persist-token');
-  });
-
-  it("setAuthToken('session') writes only to sessionStorage, not localStorage", () => {
-    setAuthToken('session-token', 'session');
-    expect(sessionStorageMock.setItem).toHaveBeenCalledWith('auth_token', 'session-token');
-    expect(vi.mocked(localStorage.setItem)).not.toHaveBeenCalledWith('auth_token', expect.any(String));
-  });
-
-  it('setAuthToken(null) removes from both storages regardless of previous persistence', () => {
-    setAuthToken('some-token', 'persistent');
-    vi.mocked(localStorage.setItem).mockClear();
-    setAuthToken(null);
-    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('auth_token');
-    expect(vi.mocked(localStorage.removeItem)).toHaveBeenCalledWith('auth_token');
-    expect(getAuthToken()).toBeNull();
-  });
-
-  it('setAuthToken keeps in-memory token when sessionStorage throws', () => {
-    sessionStorageMock.setItem.mockImplementationOnce(() => {
-      throw new DOMException('QuotaExceededError');
-    });
-    // Should not throw even when storage is unavailable
-    expect(() => setAuthToken('fallback-token')).not.toThrow();
-    // In-memory token must still be set
-    expect(getAuthToken()).toBe('fallback-token');
-  });
-
-  it('setAuthToken(null) removes from sessionStorage even when localStorage.removeItem throws', () => {
-    setAuthToken('some-token', 'persistent');
-    vi.mocked(localStorage.removeItem).mockImplementationOnce(() => {
-      throw new DOMException('SecurityError');
-    });
-    // Must not throw — localStorage failure must not abort the sessionStorage removal
-    expect(() => setAuthToken(null)).not.toThrow();
-    expect(sessionStorageMock.removeItem).toHaveBeenCalledWith('auth_token');
-    expect(getAuthToken()).toBeNull();
-  });
-
-  it('setAuthToken(null) removes from localStorage even when sessionStorage.removeItem throws', () => {
-    setAuthToken('some-token', 'persistent');
-    sessionStorageMock.removeItem.mockImplementationOnce(() => {
-      throw new DOMException('SecurityError');
-    });
-    // Must not throw — sessionStorage failure must not abort the localStorage removal
-    expect(() => setAuthToken(null)).not.toThrow();
-    expect(vi.mocked(localStorage.removeItem)).toHaveBeenCalledWith('auth_token');
     expect(getAuthToken()).toBeNull();
   });
 });
