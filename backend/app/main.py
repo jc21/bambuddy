@@ -4417,6 +4417,22 @@ async def security_headers_middleware(request, call_next):
             "frame-src 'self' http: https:; "
             "frame-ancestors 'self';"
         )
+    elif request.url.path in ("/docs", "/redoc", "/docs/oauth2-redirect"):
+        # FastAPI's built-in Swagger UI / ReDoc pages load assets from
+        # cdn.jsdelivr.net and bootstrap with an inline <script>, so the
+        # default CSP would render a blank page.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+            "img-src 'self' data: blob: https://fastapi.tiangolo.com https://cdn.redoc.ly; "
+            "connect-src 'self'; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
+            "worker-src 'self' blob:; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none';"
+        )
     else:
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
