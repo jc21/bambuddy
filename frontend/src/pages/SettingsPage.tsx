@@ -6,7 +6,7 @@ import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDateOnly } from '../utils/date';
 import { getCurrencySymbol, SUPPORTED_CURRENCIES } from '../utils/currency';
-import type { AppSettings, AppSettingsUpdate, SmartPlug, SmartPlugStatus, NotificationProvider, NotificationTemplate, UpdateStatus, GitHubBackupStatus, CloudAuthStatus, UserCreate, UserUpdate, UserResponse, StorageUsageResponse } from '../api/client';
+import type { APIKey, AppSettings, AppSettingsUpdate, SmartPlug, SmartPlugStatus, NotificationProvider, NotificationTemplate, UpdateStatus, GitHubBackupStatus, CloudAuthStatus, UserCreate, UserUpdate, UserResponse, StorageUsageResponse } from '../api/client';
 import { Card, CardContent, CardDensityProvider, CardHeader } from '../components/Card';
 import { CameraTokensSection } from './CameraTokensPage';
 import { Collapsible } from '../components/Collapsible';
@@ -402,8 +402,10 @@ export function SettingsPage() {
 
   const deleteAPIKeyMutation = useMutation({
     mutationFn: (id: number) => api.deleteAPIKey(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+    onSuccess: (_data, deletedId) => {
+      queryClient.setQueryData<APIKey[]>(['api-keys'], (old) =>
+        (old ?? []).filter((key) => key.id !== deletedId)
+      );
       showToast(t('settings.toast.apiKeyDeleted'));
     },
     onError: (error: Error) => {
