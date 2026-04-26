@@ -915,8 +915,10 @@ function StatusSummaryBar({ printers }: { printers: Printer[] | undefined }) {
       } else if (!status.connected) {
         offline++;
       } else {
-        // Count printers with HMS errors
-        if (status.hms_errors && filterKnownHMSErrors(status.hms_errors).length > 0) {
+        // Count printers with active HMS errors as problems
+        const knownHmsCount =
+          status.hms_errors ? filterKnownHMSErrors(status.hms_errors).length : 0;
+        if (knownHmsCount > 0) {
           error++;
         }
         switch (status.state) {
@@ -937,7 +939,16 @@ function StatusSummaryBar({ printers }: { printers: Printer[] | undefined }) {
             finished++;
             break;
           case 'FAILED':
-            error++;
+            // FAILED is the printer's terminal gcode_state after a print stops —
+            // including user cancellations, where there's no actual fault. Only
+            // count it as a "problem" when an HMS error is also active; otherwise
+            // it's just a print that ended unsuccessfully and the plate needs
+            // clearing (same as FINISH from the operator's perspective).
+            if (knownHmsCount > 0) {
+              // Already counted above
+            } else {
+              finished++;
+            }
             break;
           default:
             idle++;
@@ -1024,7 +1035,11 @@ function classifyPrinterStatus(
     case 'RUNNING': return 'printing';
     case 'PAUSE':   return 'paused';
     case 'FINISH':  return 'finished';
-    case 'FAILED':  return 'error';
+    // FAILED without an active HMS error is the printer's terminal state after
+    // any unsuccessful end — including user-cancellations. Treat the same as
+    // FINISH for grouping/badging purposes; only escalate to "error" when an
+    // HMS code is actually attached (handled by the early-return above).
+    case 'FAILED':  return 'finished';
     default:        return 'idle';
   }
 }

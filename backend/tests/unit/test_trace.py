@@ -183,3 +183,37 @@ class TestNormaliseInboundTraceId:
         chars; one off-by-one would silently reject UUID-like IDs that
         happen to land at the boundary."""
         assert normalise_inbound_trace_id("a" * 64) == "a" * 64
+
+
+class TestFilterMustBeAttachedToHandlerNotLogger:
+    """A filter on a Logger only fires for records that *originate* at that
+    logger — records propagated up from child loggers (every backend.* logger
+    in the app) never trigger it. Attaching TraceIDFilter to root_logger meant
+    child-logger records arrived at the file handler with no trace_id
+    attribute, the formatter raised KeyError, and the record was silently
+    dropped — manifesting as "logs/bambuddy.log only shows logs partially".
+    The filter must live on each *handler* so every record passing through it
+    gets annotated regardless of which logger emitted it."""
+
+    def test_handler_level_filter_fires_on_child_logger_propagation(self):
+        import io
+
+        root = logging.getLogger("test_trace_filter_handler_path")
+        root.setLevel(logging.DEBUG)
+        root.handlers.clear()
+        root.filters.clear()
+
+        captured = io.StringIO()
+        handler = logging.StreamHandler(captured)
+        handler.setFormatter(logging.Formatter("%(trace_id)s|%(message)s"))
+        handler.addFilter(TraceIDFilter())
+        root.addHandler(handler)
+
+        child = logging.getLogger("test_trace_filter_handler_path.child")
+        try:
+            child.info("hi from child")
+            handler.flush()
+            assert f"{TRACE_ID_PLACEHOLDER}|hi from child" in captured.getvalue()
+        finally:
+            root.handlers.clear()
+            root.filters.clear()
