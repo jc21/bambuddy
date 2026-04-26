@@ -232,11 +232,27 @@ check_dependencies()
 # DEBUG=true -> DEBUG level, else use LOG_LEVEL setting
 log_level_str = "DEBUG" if app_settings.debug else app_settings.log_level.upper()
 log_level = getattr(logging, log_level_str, logging.INFO)
-log_format = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
+# Trace ID column ([-] when no request scope is active — startup, MQTT
+# callbacks, scheduled tasks not chained from a request — so the column
+# stays visually aligned and missing values are obvious in grep). See
+# backend/app/core/trace.py for the ContextVar that feeds this slot.
+log_format = "%(asctime)s %(levelname)s [%(name)s] [%(trace_id)s] %(message)s"
 
 # Create root logger
 root_logger = logging.getLogger()
 root_logger.setLevel(log_level)
+
+# Trace-ID injection: this filter populates record.trace_id from the
+# per-request ContextVar so the format string above can reference it.
+# Attached to the root logger so EVERY record (application, uvicorn,
+# third-party) gets the field — without it, the format string would
+# raise KeyError on records that don't naturally carry a trace_id
+# attribute. See backend/app/core/trace.py for the ContextVar that
+# the filter reads.
+from backend.app.core.trace import TraceIDFilter
+
+_trace_id_filter = TraceIDFilter()
+root_logger.addFilter(_trace_id_filter)
 
 # Console handler - always enabled
 console_handler = logging.StreamHandler()
@@ -257,6 +273,24 @@ if app_settings.log_to_file:
     file_handler.setFormatter(logging.Formatter(log_format))
     root_logger.addHandler(file_handler)
     logging.info("Logging to file: %s", log_file)
+
+    # Pipe uvicorn's HTTP access log to bambuddy.log too. Uvicorn ships its
+    # access logger with propagate=False by default, so without this attach
+    # there is no on-disk record of which endpoint triggered a server-state
+    # change — the rogue stop_print mystery on 2026-04-26 was untraceable
+    # for exactly this reason. Filtered to write methods only
+    # (POST/PUT/PATCH/DELETE) so the high-volume status-poll GETs from the
+    # frontend don't churn the rotation window faster than it's useful.
+    from backend.app.core.logging_filters import WriteRequestsOnlyFilter
+
+    uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_access_logger.addHandler(file_handler)
+    uvicorn_access_logger.addFilter(WriteRequestsOnlyFilter())
+    # Uvicorn's access logger has propagate=False (its own default), so the
+    # root-attached TraceIDFilter never sees these records. Attach a
+    # second instance directly so HTTP access lines carry the same trace
+    # ID column as the application logs they correlate with.
+    uvicorn_access_logger.addFilter(TraceIDFilter())
 
 # Reduce noise from third-party libraries in production
 if not app_settings.debug:
@@ -4607,6 +4641,56 @@ async def auth_middleware(request, call_next):
         )
 
     return await call_next(request)
+
+
+@app.middleware("http")
+async def trace_id_middleware(request, call_next):
+    """Stamp every HTTP request with a trace ID and echo it back.
+
+    Decorated AFTER auth_middleware on purpose: Starlette stacks
+    @app.middleware decorators LIFO, so the last-decorated runs first
+    inbound. Putting the trace stamp last makes it the OUTERMOST layer,
+    which means auth-middleware log lines (and every line emitted on the
+    way down to and back from the route handler) all carry the same
+    trace ID. If we put it before auth, auth's logs would be stamped
+    with the *previous* request's ID — useless for correlation.
+
+    Honours an inbound ``X-Trace-Id`` header so callers running their
+    own tracing can correlate their span IDs with our log lines, but
+    only if the value passes the whitelist gate in
+    ``backend.app.core.trace.normalise_inbound_trace_id`` — anything
+    rejected (too long, contains control chars, etc.) silently triggers
+    a freshly minted server-side ID rather than failing the request.
+
+    The minted (or echoed) ID is set on a ContextVar so that every log
+    record emitted during the request — application logs *and* uvicorn's
+    access log — carries it via TraceIDFilter, and is also written to
+    the ``X-Trace-Id`` response header so clients can pin a server-side
+    log search to the exact request they made.
+    """
+    from backend.app.core.trace import (
+        generate_trace_id,
+        normalise_inbound_trace_id,
+        trace_id_var,
+    )
+
+    inbound = normalise_inbound_trace_id(request.headers.get("X-Trace-Id"))
+    trace_id = inbound if inbound is not None else generate_trace_id()
+
+    token = trace_id_var.set(trace_id)
+    try:
+        response = await call_next(request)
+    finally:
+        # Reset the ContextVar so a record emitted in a totally
+        # unrelated background task that just happens to inherit this
+        # context doesn't keep referencing this request's ID forever.
+        # In practice ContextVar.reset is best-effort under asyncio
+        # task-spawn semantics, but the cost is one attribute write so
+        # we may as well do it.
+        trace_id_var.reset(token)
+
+    response.headers["X-Trace-Id"] = trace_id
+    return response
 
 
 # API routes
