@@ -35,8 +35,14 @@ from backend.app.services.slice_dispatch import slice_dispatch
 
 
 def _make_3mf_with_settings(settings_payload: dict | None = None) -> bytes:
-    """Build a tiny in-memory 3MF zip that has a `Metadata/project_settings.config`
-    entry. Used to verify the strip-before-forwarding behavior."""
+    """Build a tiny in-memory 3MF zip with all the embedded-config files
+    that real-world Bambu Studio / OrcaSlicer 3MFs ship with.
+
+    The strip-before-forwarding helper has to remove ALL of these (not
+    just `project_settings.config`) — leftover entries reference printer
+    / filament IDs from the original slice and trip the CLI's input
+    validation when a different `--load-settings` triplet is supplied.
+    """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("3D/3dmodel.model", "<model/>")
@@ -44,6 +50,12 @@ def _make_3mf_with_settings(settings_payload: dict | None = None) -> bytes:
             "Metadata/project_settings.config",
             json.dumps(settings_payload or {"prime_tower_brim_width": "-1"}),
         )
+        zf.writestr("Metadata/model_settings.config", "<config><object id='1'/></config>")
+        zf.writestr(
+            "Metadata/slice_info.config",
+            "<config><plate><metadata key='filament' value='GFL00'/></plate></config>",
+        )
+        zf.writestr("Metadata/cut_information.xml", "<cut><part id='1'/></cut>")
     return buf.getvalue()
 
 
@@ -420,13 +432,19 @@ class TestSliceLibraryFile:
         assert final["status"] == "completed", final
 
         # Recover the embedded zip from the multipart body — the strip
-        # removed Metadata/project_settings.config but kept geometry.
+        # must remove every config that references the original slice's
+        # printer / filament IDs (otherwise the CLI's input validation
+        # rejects the new --load-settings triplet, the slice fails, and
+        # we drop into the embedded-settings fallback).  Geometry stays.
         body = captured["body"]
         pk = body.find(b"PK\x03\x04")
         assert pk >= 0, "3MF body not found in multipart payload"
         with zipfile.ZipFile(io.BytesIO(body[pk:]), "r") as zin:
             names = set(zin.namelist())
         assert "Metadata/project_settings.config" not in names
+        assert "Metadata/model_settings.config" not in names
+        assert "Metadata/slice_info.config" not in names
+        assert "Metadata/cut_information.xml" not in names
         assert "3D/3dmodel.model" in names
 
 

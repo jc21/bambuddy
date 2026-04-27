@@ -130,6 +130,79 @@ class TestSliceWithProfiles:
         assert "Failed to slice the model" in str(exc_info.value)
 
     @pytest.mark.asyncio
+    async def test_5xx_includes_sidecar_details_field(self):
+        """Sidecar's AppError emits ``{message, details}`` — both must end up
+        in the raised error so ``bambuddy.log`` carries the actual CLI
+        rejection reason instead of just the generic outer message.
+        Pinned to fix the regression where every 3MF slice surfaced as
+        the unhelpful ``Failed to slice the model`` line in production."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                status_code=500,
+                json={
+                    "message": "Failed to slice the model",
+                    "details": "prime_tower_brim_width: -1 not in range [0, 100]",
+                },
+            )
+
+        service = SlicerApiService("http://sidecar:3000", client=_mock_client(handler))
+        with pytest.raises(SlicerApiServerError) as exc_info:
+            await service.slice_with_profiles(
+                model_bytes=b"x",
+                model_filename="Cube.stl",
+                printer_profile_json="{}",
+                process_profile_json="{}",
+                filament_profile_json="{}",
+            )
+        msg = str(exc_info.value)
+        assert "Failed to slice the model" in msg
+        assert "prime_tower_brim_width: -1" in msg
+
+    @pytest.mark.asyncio
+    async def test_5xx_with_only_details_still_surfaces(self):
+        """If a future sidecar version emits ``details`` without
+        ``message``, fall back to the details string so we don't end up
+        with an empty error."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                status_code=500,
+                json={"details": "Slicer killed by SIGSEGV"},
+            )
+
+        service = SlicerApiService("http://sidecar:3000", client=_mock_client(handler))
+        with pytest.raises(SlicerApiServerError) as exc_info:
+            await service.slice_with_profiles(
+                model_bytes=b"x",
+                model_filename="Cube.stl",
+                printer_profile_json="{}",
+                process_profile_json="{}",
+                filament_profile_json="{}",
+            )
+        assert "SIGSEGV" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_5xx_with_non_json_body_falls_back_to_text(self):
+        """Some failure paths (gateway timeouts, bare nginx 502s) return
+        plain text rather than the JSON envelope. Don't crash trying to
+        decode it — fall back to the text body."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(status_code=502, content=b"Bad Gateway")
+
+        service = SlicerApiService("http://sidecar:3000", client=_mock_client(handler))
+        with pytest.raises(SlicerApiServerError) as exc_info:
+            await service.slice_with_profiles(
+                model_bytes=b"x",
+                model_filename="Cube.stl",
+                printer_profile_json="{}",
+                process_profile_json="{}",
+                filament_profile_json="{}",
+            )
+        assert "Bad Gateway" in str(exc_info.value)
+
+    @pytest.mark.asyncio
     async def test_connection_error_raises_unavailable(self):
         def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("Connection refused")

@@ -48,6 +48,30 @@ class SliceResult(NamedTuple):
 _shared_http_client: httpx.AsyncClient | None = None
 
 
+def _format_sidecar_error(response: httpx.Response) -> str:
+    """Build a human-readable error string from a sidecar 4xx/5xx response.
+
+    The sidecar's `AppError` middleware emits a JSON body of the shape
+    ``{"message": "...", "details": "..."}``. Earlier versions of this
+    client only read ``message``, which left every CLI failure surfaced
+    as the generic ``Failed to slice the model`` because the *actual*
+    CLI stderr / `error_string` lives in ``details``. Including both
+    means ``bambuddy.log`` carries the real reason a slice rejected
+    the supplied profiles instead of an unhelpful generic line.
+    """
+    try:
+        payload = response.json()
+    except Exception:
+        return response.text[:500]
+    if not isinstance(payload, dict):
+        return str(payload)[:500]
+    message = payload.get("message") or ""
+    details = payload.get("details") or ""
+    if message and details:
+        return f"{message}: {details}"[:500]
+    return (message or details or response.text)[:500]
+
+
 def set_shared_http_client(client: httpx.AsyncClient | None) -> None:
     """Register an app-scoped client so per-request services can pool transport."""
     global _shared_http_client
@@ -108,6 +132,27 @@ class SlicerApiService:
             raise SlicerApiUnavailableError(f"Slicer sidecar /health returned {response.status_code}")
         return response.json()
 
+    async def list_bundled_profiles(self) -> dict:
+        """GET /profiles/bundled — return the slicer's stock profiles by slot.
+
+        Powers the "Standard" tier of Bambuddy's SliceModal preset dropdowns.
+        The sidecar walks the slicer's read-only `resources/profiles/BBL/`
+        tree and returns ``{printer, process, filament}`` arrays of
+        ``{name, base_id}`` (alphabetised, instantiable presets only — abstract
+        bases like `fdm_filament_pla` are filtered out by the sidecar).
+
+        Returns an empty-shaped dict when the sidecar is unreachable so the
+        unified-presets endpoint can degrade to "no standard tier" without
+        crashing the modal — cloud + local-imported profiles still render.
+        """
+        try:
+            response = await self._client.get(f"{self.base_url}/profiles/bundled", timeout=10.0)
+        except httpx.RequestError as exc:
+            raise SlicerApiUnavailableError(f"Slicer sidecar unreachable: {exc}") from exc
+        if response.status_code >= 400:
+            raise SlicerApiUnavailableError(f"Slicer sidecar /profiles/bundled returned {response.status_code}")
+        return response.json()
+
     async def slice_with_profiles(
         self,
         *,
@@ -148,17 +193,9 @@ class SlicerApiService:
             raise SlicerApiUnavailableError(f"Slicer sidecar unreachable: {exc}") from exc
 
         if response.status_code >= 500:
-            try:
-                msg = response.json().get("message", "")
-            except Exception:
-                msg = response.text
-            raise SlicerApiServerError(f"Slicer CLI failed ({response.status_code}): {msg[:500]}")
+            raise SlicerApiServerError(f"Slicer CLI failed ({response.status_code}): {_format_sidecar_error(response)}")
         if response.status_code >= 400:
-            try:
-                msg = response.json().get("message", "")
-            except Exception:
-                msg = response.text
-            raise SlicerInputError(f"Slicer rejected input ({response.status_code}): {msg[:500]}")
+            raise SlicerInputError(f"Slicer rejected input ({response.status_code}): {_format_sidecar_error(response)}")
 
         return SliceResult(
             content=response.content,
@@ -203,17 +240,9 @@ class SlicerApiService:
             raise SlicerApiUnavailableError(f"Slicer sidecar unreachable: {exc}") from exc
 
         if response.status_code >= 500:
-            try:
-                msg = response.json().get("message", "")
-            except Exception:
-                msg = response.text
-            raise SlicerApiServerError(f"Slicer CLI failed ({response.status_code}): {msg[:500]}")
+            raise SlicerApiServerError(f"Slicer CLI failed ({response.status_code}): {_format_sidecar_error(response)}")
         if response.status_code >= 400:
-            try:
-                msg = response.json().get("message", "")
-            except Exception:
-                msg = response.text
-            raise SlicerInputError(f"Slicer rejected input ({response.status_code}): {msg[:500]}")
+            raise SlicerInputError(f"Slicer rejected input ({response.status_code}): {_format_sidecar_error(response)}")
 
         return SliceResult(
             content=response.content,

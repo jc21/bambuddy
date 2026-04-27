@@ -2471,16 +2471,51 @@ async def get_library_file_filament_requirements(
     }
 
 
+_STRIPPABLE_3MF_CONFIGS = frozenset(
+    {
+        # Settings dump used by --load-settings validation; the CLI tries to
+        # match its sentinel values (`prime_tower_brim_width: -1`, empty
+        # arrays) against the supplied profile and rejects out-of-range.
+        "Metadata/project_settings.config",
+        # Per-object settings overrides referencing the source plate's
+        # filament IDs / printer IDs. When the user picks a different
+        # printer / filament triplet, the IDs no longer resolve and the
+        # CLI exits non-zero on input validation.
+        "Metadata/model_settings.config",
+        # Slicer-version + plate-config + filament-mapping snapshot from
+        # the original slice. Includes the original printer model and
+        # filament references; mismatches against `--load-settings`
+        # consistently surfaced as `Slicer CLI failed (500)` for every
+        # 3MF in production. Removing it lets the CLI build a fresh slice
+        # plan from the supplied profile triplet.
+        "Metadata/slice_info.config",
+        # Multi-part / split-mesh metadata referencing object IDs from the
+        # original slice. Strip for the same reason — preserves the geometry
+        # in `3D/3dmodel.model` while dropping the orphan references.
+        "Metadata/cut_information.xml",
+    }
+)
+
+
 def _strip_3mf_embedded_settings(zip_bytes: bytes) -> bytes:
-    """Remove ``Metadata/project_settings.config`` from a 3MF.
+    """Remove embedded slicer-config metadata from a 3MF.
 
     Bambuddy supplies the slicer profile triplet via the sidecar's
     ``--load-settings`` path; the 3MF's embedded settings would otherwise be
     validated by the CLI first and can fail with sentinel-value range
     checks (`prime_tower_brim_width: -1 not in range`, etc.) regardless of
-    what we pass via ``--load-settings``. Stripping the embedded config
-    forces the CLI to use the supplied profiles only. Geometry, color, and
-    multi-part data inside the 3MF are preserved.
+    what we pass via ``--load-settings``. Stripping the embedded configs
+    forces the CLI to use the supplied profiles only. Geometry
+    (``3D/3dmodel.model``), thumbnails, color, and multi-part data inside
+    the 3MF are preserved.
+
+    The set of strippable filenames is centralised in
+    ``_STRIPPABLE_3MF_CONFIGS`` — see that constant for the per-file
+    rationale. Project-settings alone wasn't enough: real-world Bambu
+    Studio 3MFs cross-reference printer / filament IDs from the other
+    metadata configs, and any single leftover triggered the validation
+    failure that made every profile-driven slice fall back to embedded
+    settings.
     """
     from io import BytesIO
 
@@ -2488,7 +2523,7 @@ def _strip_3mf_embedded_settings(zip_bytes: bytes) -> bytes:
     dst = BytesIO()
     with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
-            if item.filename == "Metadata/project_settings.config":
+            if item.filename in _STRIPPABLE_3MF_CONFIGS:
                 continue
             zout.writestr(item, zin.read(item.filename))
     return dst.getvalue()
@@ -2500,14 +2535,19 @@ async def _run_slicer_with_fallback(
     model_bytes: bytes,
     model_filename: str,
     request: SliceRequest,
+    current_user_id: int | None = None,
 ):
     """Validate presets, dispatch to the right sidecar, run the slicer with
     the auto-fallback for 3MF inputs whose `--load-settings` path crashes the
     CLI. Returns ``(SliceResult, used_embedded_settings: bool)``. Raises
     ``HTTPException`` for any caller-facing error.
+
+    `current_user_id` is needed to resolve **cloud** presets — the cloud token
+    is per-user when auth is enabled. For the legacy / local-only path it can
+    be left ``None``.
     """
     from backend.app.api.routes.settings import get_setting
-    from backend.app.models.local_preset import LocalPreset
+    from backend.app.services.preset_resolver import resolve_preset_ref
     from backend.app.services.slicer_api import (
         SlicerApiServerError,
         SlicerApiService,
@@ -2515,20 +2555,23 @@ async def _run_slicer_with_fallback(
         SlicerInputError,
     )
 
-    # Profile triplet — every slot must match the expected preset_type
+    # Resolve each slot via the source-aware resolver. The schema validator
+    # has already normalised legacy `*_preset_id: int` fields into
+    # `PresetRef(source='local', id=str(int))`, so all three are guaranteed
+    # non-None here.
+    user: User | None = None
+    if current_user_id is not None:
+        user = await db.get(User, current_user_id)
+
     presets: dict[str, str] = {}
-    for pid, expected_type, key in (
-        (request.printer_preset_id, "printer", "printer"),
-        (request.process_preset_id, "process", "process"),
-        (request.filament_preset_id, "filament", "filament"),
-    ):
-        preset = await db.get(LocalPreset, pid)
-        if preset is None or preset.preset_type != expected_type:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid {key} preset id (expected preset_type='{expected_type}')",
-            )
-        presets[key] = preset.setting
+    refs = {
+        "printer": request.printer_preset,
+        "process": request.process_preset,
+        "filament": request.filament_preset,
+    }
+    for slot, ref in refs.items():
+        assert ref is not None, "schema validator guarantees PresetRef is set"
+        presets[slot] = await resolve_preset_ref(db, user, ref, slot)
 
     # Slicer routing — pick the sidecar URL by preferred_slicer.
     # The per-install URL setting (Settings UI → Slicer card) wins; an
@@ -2621,6 +2664,7 @@ async def slice_and_persist(
         model_bytes=model_bytes,
         model_filename=model_filename,
         request=library_request,
+        current_user_id=current_user_id,
     )
 
     base_name = model_filename.rsplit(".", 1)[0]
@@ -2728,6 +2772,7 @@ async def slice_and_persist_as_archive(
         model_bytes=model_bytes,
         model_filename=model_filename,
         request=archive_request,
+        current_user_id=current_user_id,
     )
 
     base_name = model_filename.rsplit(".", 1)[0]

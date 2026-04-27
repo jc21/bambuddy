@@ -1,8 +1,16 @@
-import { Cog, Loader2, X } from 'lucide-react';
-import { useState } from 'react';
+import { Cloud, CloudOff, Cog, Loader2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { api, type LocalPreset } from '../api/client';
+import {
+  api,
+  type PresetRef,
+  type PresetSource,
+  type SlicerCloudStatus,
+  type UnifiedPreset,
+  type UnifiedPresetsBySlot,
+  type UnifiedPresetsResponse,
+} from '../api/client';
 import { useSliceJobTracker } from '../contexts/SliceJobTrackerContext';
 
 export type SliceSource =
@@ -14,30 +22,72 @@ interface SliceModalProps {
   onClose: () => void;
 }
 
+type Slot = 'printer' | 'process' | 'filament';
+
+function pickDefault(by: UnifiedPresetsResponse, slot: Slot): PresetRef | null {
+  // Cloud > local > standard. The endpoint already deduplicates by name, so
+  // no name-collision handling needed here — first non-empty tier wins.
+  for (const tier of ['cloud', 'local', 'standard'] as const) {
+    const list = by[tier][slot];
+    if (list.length > 0) {
+      return { source: list[0].source, id: list[0].id };
+    }
+  }
+  return null;
+}
+
+function toRefValue(ref: PresetRef | null): string {
+  // The HTML `<select>` value space is flat strings; encode source + id so
+  // the same preset name can live in multiple tiers without collision.
+  return ref ? `${ref.source}:${ref.id}` : '';
+}
+
+function fromRefValue(raw: string): PresetRef | null {
+  if (!raw) return null;
+  const idx = raw.indexOf(':');
+  if (idx < 0) return null;
+  const source = raw.slice(0, idx) as PresetSource;
+  const id = raw.slice(idx + 1);
+  if (source !== 'cloud' && source !== 'local' && source !== 'standard') return null;
+  return { source, id };
+}
+
 export function SliceModal({ source, onClose }: SliceModalProps) {
   const { t } = useTranslation();
   const { trackJob } = useSliceJobTracker();
 
-  const [printerPresetId, setPrinterPresetId] = useState<number | null>(null);
-  const [processPresetId, setProcessPresetId] = useState<number | null>(null);
-  const [filamentPresetId, setFilamentPresetId] = useState<number | null>(null);
+  const [printerPreset, setPrinterPreset] = useState<PresetRef | null>(null);
+  const [processPreset, setProcessPreset] = useState<PresetRef | null>(null);
+  const [filamentPreset, setFilamentPreset] = useState<PresetRef | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const presetsQuery = useQuery({
-    queryKey: ['localPresets'],
-    queryFn: () => api.getLocalPresets(),
+    queryKey: ['slicerPresets'],
+    queryFn: () => api.getSlicerPresets(),
     staleTime: 60_000,
   });
 
+  // Default selection: cloud > local > standard. Runs only on the first
+  // successful load; subsequent re-renders preserve the user's manual choice.
+  useEffect(() => {
+    if (!presetsQuery.data) return;
+    if (printerPreset == null) setPrinterPreset(pickDefault(presetsQuery.data, 'printer'));
+    if (processPreset == null) setProcessPreset(pickDefault(presetsQuery.data, 'process'));
+    if (filamentPreset == null) setFilamentPreset(pickDefault(presetsQuery.data, 'filament'));
+    // Intentionally exclude state-setters and current selections from deps —
+    // we only want the auto-pick to fire once when data first arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetsQuery.data]);
+
   const enqueueMutation = useMutation({
     mutationFn: async () => {
-      if (printerPresetId == null || processPresetId == null || filamentPresetId == null) {
+      if (!printerPreset || !processPreset || !filamentPreset) {
         throw new Error('All three presets must be selected');
       }
       const body = {
-        printer_preset_id: printerPresetId,
-        process_preset_id: processPresetId,
-        filament_preset_id: filamentPresetId,
+        printer_preset: printerPreset,
+        process_preset: processPreset,
+        filament_preset: filamentPreset,
       };
       if (source.kind === 'libraryFile') {
         return api.sliceLibraryFile(source.id, body);
@@ -45,8 +95,6 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
       return api.sliceArchive(source.id, body);
     },
     onSuccess: (enqueue) => {
-      // Hand the job off to the global tracker — polling, toasts, and
-      // query invalidation continue across navigation.
       trackJob(enqueue.job_id, source.kind, source.filename);
       onClose();
     },
@@ -56,7 +104,7 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
     },
   });
 
-  const isReady = printerPresetId != null && processPresetId != null && filamentPresetId != null;
+  const isReady = printerPreset != null && processPreset != null && filamentPreset != null;
   const isEnqueuing = enqueueMutation.isPending;
 
   return (
@@ -104,32 +152,36 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
             <div className="text-sm text-red-400" role="alert">
               {t(
                 'slice.presetsLoadFailed',
-                'Failed to load presets. Open Settings → Profiles to import them first.',
+                'Failed to load presets. Open Settings → Profiles to import them, or sign in to Bambu Cloud.',
               )}
             </div>
           )}
 
           {presetsQuery.data && (
             <>
+              <CloudStatusBanner status={presetsQuery.data.cloud_status} />
               <PresetDropdown
                 label={t('slice.printer', 'Printer profile')}
-                presets={presetsQuery.data.printer}
-                value={printerPresetId}
-                onChange={setPrinterPresetId}
+                slot="printer"
+                data={presetsQuery.data}
+                value={printerPreset}
+                onChange={setPrinterPreset}
                 disabled={isEnqueuing}
               />
               <PresetDropdown
                 label={t('slice.process', 'Process profile')}
-                presets={presetsQuery.data.process}
-                value={processPresetId}
-                onChange={setProcessPresetId}
+                slot="process"
+                data={presetsQuery.data}
+                value={processPreset}
+                onChange={setProcessPreset}
                 disabled={isEnqueuing}
               />
               <PresetDropdown
                 label={t('slice.filament', 'Filament profile')}
-                presets={presetsQuery.data.filament}
-                value={filamentPresetId}
-                onChange={setFilamentPresetId}
+                slot="filament"
+                data={presetsQuery.data}
+                value={filamentPreset}
+                onChange={setFilamentPreset}
                 disabled={isEnqueuing}
               />
             </>
@@ -176,30 +228,92 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
   );
 }
 
+function CloudStatusBanner({ status }: { status: SlicerCloudStatus }) {
+  const { t } = useTranslation();
+  if (status === 'ok') return null;
+
+  // Map each non-ok status to the appropriate icon + tone. None of these are
+  // hard errors — the user can still slice using local + standard presets,
+  // so we use info / warn styling rather than error red.
+  const config: Record<Exclude<SlicerCloudStatus, 'ok'>, { tone: string; icon: typeof Cloud; key: string; fallback: string }> = {
+    not_authenticated: {
+      tone: 'border-bambu-dark-tertiary/40 bg-bambu-dark text-bambu-gray',
+      icon: Cloud,
+      key: 'slice.cloud.notAuthenticated',
+      fallback: 'Sign in to Bambu Cloud (Settings → Profiles → Cloud) to see your cloud presets.',
+    },
+    expired: {
+      tone: 'border-amber-700/40 bg-amber-900/20 text-amber-200',
+      icon: CloudOff,
+      key: 'slice.cloud.expired',
+      fallback: 'Bambu Cloud session expired — sign in again to refresh your cloud presets.',
+    },
+    unreachable: {
+      tone: 'border-bambu-dark-tertiary/40 bg-bambu-dark text-bambu-gray',
+      icon: CloudOff,
+      key: 'slice.cloud.unreachable',
+      fallback: 'Bambu Cloud is unreachable right now. Local and standard presets still work.',
+    },
+  };
+  const { tone, icon: Icon, key, fallback } = config[status];
+  return (
+    <div className={`flex items-start gap-2 text-xs rounded-md border p-2 ${tone}`} role="status">
+      <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+      <span>{t(key, fallback)}</span>
+    </div>
+  );
+}
+
 interface PresetDropdownProps {
   label: string;
-  presets: LocalPreset[];
-  value: number | null;
-  onChange: (id: number | null) => void;
+  slot: Slot;
+  data: UnifiedPresetsResponse;
+  value: PresetRef | null;
+  onChange: (ref: PresetRef | null) => void;
   disabled?: boolean;
 }
 
-function PresetDropdown({ label, presets, value, onChange, disabled }: PresetDropdownProps) {
+function PresetDropdown({ label, slot, data, value, onChange, disabled }: PresetDropdownProps) {
   const { t } = useTranslation();
+
+  const sections: { tierLabel: string; entries: UnifiedPreset[] }[] = useMemo(() => {
+    const tiers: { key: keyof UnifiedPresetsResponse; tier: 'cloud' | 'local' | 'standard'; label: string; fallback: string }[] = [
+      { key: 'cloud', tier: 'cloud', label: 'slice.tier.cloud', fallback: 'Cloud' },
+      { key: 'local', tier: 'local', label: 'slice.tier.local', fallback: 'Imported' },
+      { key: 'standard', tier: 'standard', label: 'slice.tier.standard', fallback: 'Standard' },
+    ];
+    return tiers
+      .map(({ key, label: lk, fallback }) => ({
+        tierLabel: t(lk, fallback),
+        entries: (data[key] as UnifiedPresetsBySlot)[slot],
+      }))
+      .filter((s) => s.entries.length > 0);
+  }, [data, slot, t]);
+
+  const totalEntries = sections.reduce((sum, s) => sum + s.entries.length, 0);
+
   return (
     <label className="block">
       <span className="block text-xs text-bambu-gray mb-1">{label}</span>
       <select
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        disabled={disabled}
+        value={toRefValue(value)}
+        onChange={(e) => onChange(fromRefValue(e.target.value))}
+        disabled={disabled || totalEntries === 0}
         className="w-full px-3 py-2 rounded-md bg-bambu-dark border border-bambu-dark-tertiary text-white text-sm focus:outline-none focus:border-bambu-gray disabled:opacity-50"
       >
-        <option value="">{t('slice.selectPreset', '— Select a preset —')}</option>
-        {presets.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
+        <option value="">
+          {totalEntries === 0
+            ? t('slice.noPresetsForSlot', 'No presets available')
+            : t('slice.selectPreset', '— Select a preset —')}
+        </option>
+        {sections.map((section) => (
+          <optgroup key={section.tierLabel} label={section.tierLabel}>
+            {section.entries.map((p) => (
+              <option key={`${p.source}:${p.id}`} value={`${p.source}:${p.id}`}>
+                {p.name}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </select>
     </label>

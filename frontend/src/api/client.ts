@@ -1111,12 +1111,45 @@ export interface BuiltinFilament {
 }
 
 // Slice request/response — POST /library/files/{id}/slice and /archives/{id}/slice
+//
+// Two preset shapes are accepted per slot:
+//   - Legacy bare integer ids (`*_preset_id`) — pre-cloud-tier clients.
+//   - Source-aware refs (`*_preset: PresetRef`) — new SliceModal that picks
+//     across cloud / local / standard tiers. Source-aware refs win when both
+//     are present in the same payload.
+export type PresetSource = 'cloud' | 'local' | 'standard';
+export interface PresetRef {
+  source: PresetSource;
+  id: string;
+}
 export interface SliceRequest {
-  printer_preset_id: number;
-  process_preset_id: number;
-  filament_preset_id: number;
+  printer_preset_id?: number;
+  process_preset_id?: number;
+  filament_preset_id?: number;
+  printer_preset?: PresetRef;
+  process_preset?: PresetRef;
+  filament_preset?: PresetRef;
   plate?: number;
   export_3mf?: boolean;
+}
+
+// GET /api/v1/slicer/presets — unified listing across cloud / local / standard.
+export type SlicerCloudStatus = 'ok' | 'not_authenticated' | 'expired' | 'unreachable';
+export interface UnifiedPreset {
+  id: string;
+  name: string;
+  source: PresetSource;
+}
+export interface UnifiedPresetsBySlot {
+  printer: UnifiedPreset[];
+  process: UnifiedPreset[];
+  filament: UnifiedPreset[];
+}
+export interface UnifiedPresetsResponse {
+  cloud: UnifiedPresetsBySlot;
+  local: UnifiedPresetsBySlot;
+  standard: UnifiedPresetsBySlot;
+  cloud_status: SlicerCloudStatus;
 }
 
 export interface SliceResponse {
@@ -4975,6 +5008,12 @@ export const api = {
     }),
   getSliceJob: (jobId: number) =>
     request<SliceJobState>(`/slice-jobs/${jobId}`),
+
+  // Unified slicer-preset listing — cloud + local + standard, deduped by name.
+  // Used by the SliceModal; see UnifiedPresetsResponse for the shape and
+  // backend/app/api/routes/slicer_presets.py for the priority rules.
+  getSlicerPresets: () =>
+    request<UnifiedPresetsResponse>('/slicer/presets'),
 
   // Local Presets (OrcaSlicer imports)
   getLocalPresets: () =>
