@@ -4160,6 +4160,12 @@ def stop_auth_cleanup() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    # Install Windows-only asyncio Proactor cleanup-RST filter (#1113) before
+    # anything else can spawn tasks that might trip it.
+    from backend.app.core.asyncio_handlers import install_proactor_reset_filter
+
+    install_proactor_reset_filter()
+
     await init_db()
 
     # Register an app-scoped httpx client for Bambu Cloud services so
