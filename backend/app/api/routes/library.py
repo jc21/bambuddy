@@ -2899,6 +2899,14 @@ async def slice_and_persist_as_archive(
     if used_embedded_settings:
         metadata["used_embedded_settings"] = True
 
+    # Prefer the actually-used filament list from the sliced output's
+    # slice_info.config (parsed_metadata.filament_* — only entries with
+    # used_g > 0). Falling back to the source_archive's list would
+    # surface every project-wide AMS slot, including ones the picked
+    # plate doesn't use (16+ swatches on the card for a 2-color print).
+    new_filament_type = parsed_metadata.get("filament_type") or source_archive.filament_type
+    new_filament_color = parsed_metadata.get("filament_color") or source_archive.filament_color
+
     new_archive = PrintArchive(
         printer_id=source_archive.printer_id,
         project_id=source_archive.project_id,
@@ -2912,8 +2920,8 @@ async def slice_and_persist_as_archive(
         print_name=(source_archive.print_name or base_name) + " (re-sliced)",
         print_time_seconds=result.print_time_seconds,
         filament_used_grams=result.filament_used_g or None,
-        filament_type=source_archive.filament_type,
-        filament_color=source_archive.filament_color,
+        filament_type=new_filament_type,
+        filament_color=new_filament_color,
         layer_height=source_archive.layer_height,
         nozzle_diameter=source_archive.nozzle_diameter,
         sliced_for_model=source_archive.sliced_for_model,
