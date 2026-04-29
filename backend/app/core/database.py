@@ -640,6 +640,13 @@ async def run_migrations(conn):
     # Migration: Add target_parts_count column to projects for tracking total parts needed
     await _safe_execute(conn, "ALTER TABLE projects ADD COLUMN target_parts_count INTEGER")
 
+    # Migration: Add url + cover_image_filename columns to projects (#1155).
+    # url: external link rendered next to the project name on the card.
+    # cover_image_filename: filename of the project's hero image inside the
+    # existing attachments dir; rendered as a thumbnail on the card.
+    await _safe_execute(conn, "ALTER TABLE projects ADD COLUMN url VARCHAR(2048)")
+    await _safe_execute(conn, "ALTER TABLE projects ADD COLUMN cover_image_filename VARCHAR(255)")
+
     # Migration: Make printer_id nullable in print_queue for unassigned queue items
     # SQLite doesn't support ALTER COLUMN, so we need to recreate the table
     # PostgreSQL gets the correct schema from create_all(), so skip this

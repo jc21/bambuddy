@@ -185,6 +185,7 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Track plates (print jobs) and parts separately
 - Auto-detect parts count from 3MF files
 - Color-coded project badges
+- **Project URL + cover photo** — paste a MakerWorld/Printables/Thingiverse link and upload a hero image so each card is immediately recognisable; the URL renders as a one-click link beside the project name
 - Bulk assign archives via multi-select toolbar
 - Import/Export projects as ZIP (includes files) or JSON
 - Print or queue files from linked library folders directly in the project view (resulting archive auto-linked to the project)
