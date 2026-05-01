@@ -377,10 +377,14 @@ export function Layout() {
     setDragOverId(null);
   };
 
-  // Show update banner if update available and not dismissed for this version
+  // Show update banner if update available and not dismissed for this version.
+  // Suppressed when running as a Home Assistant addon — HA Supervisor surfaces
+  // its own update notification in the HA UI, so the in-app banner is duplicate
+  // noise that links to a page that just says "update via HA."
   const showUpdateBanner = updateCheck?.update_available &&
     updateCheck.latest_version &&
-    updateCheck.latest_version !== dismissedUpdateVersion;
+    updateCheck.latest_version !== dismissedUpdateVersion &&
+    !updateCheck.is_ha_addon;
 
   const dismissUpdateBanner = () => {
     if (updateCheck?.latest_version) {
