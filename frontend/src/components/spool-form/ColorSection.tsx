@@ -216,7 +216,7 @@ export function ColorSection({
       {/* Color preview banner — shows gradient + effect overlay. */}
       <div
         className="h-10 rounded-lg border border-bambu-dark-tertiary"
-        style={{ backgroundImage: previewBackground, backgroundSize: 'cover' }}
+        style={previewBackground}
         data-testid="color-preview-banner"
       />
 

@@ -133,7 +133,7 @@ describe('dual-color / tri-color hard-split bars (#1154 follow-up)', () => {
       extraColors: '7f3696,006ec9',
       effectType: 'dual-color',
     });
-    const lower = bg.toLowerCase();
+    const lower = bg.backgroundImage.toLowerCase();
     // Hard split direction — ``to right`` (or ``90deg``), never ``135deg``.
     expect(lower).toContain('to right');
     expect(lower).not.toContain('135deg');
@@ -151,7 +151,7 @@ describe('dual-color / tri-color hard-split bars (#1154 follow-up)', () => {
       extraColors: 'ff0000,00ff00,0000ff',
       effectType: 'tri-color',
     });
-    const lower = bg.toLowerCase();
+    const lower = bg.backgroundImage.toLowerCase();
     expect(lower).toContain('to right');
     // Each third gets its own contiguous segment.
     expect(lower).toMatch(/#ff0000\s+0\.000%\s+33\.333%/);
@@ -164,7 +164,7 @@ describe('dual-color / tri-color hard-split bars (#1154 follow-up)', () => {
       extraColors: '7f3696,006ec9',
       effectType: 'gradient',
     });
-    const lower = bg.toLowerCase();
+    const lower = bg.backgroundImage.toLowerCase();
     // Original visual preserved for non-dual / non-tri stops.
     expect(lower).toContain('135deg');
     expect(lower).not.toContain('to right');
@@ -187,27 +187,58 @@ describe('dual-color / tri-color hard-split bars (#1154 follow-up)', () => {
       extraColors: '7f3696,006ec9',
       effectType: 'gradient',
     });
-    expect(dual).not.toBe(grad);
+    expect(dual.backgroundImage).not.toBe(grad.backgroundImage);
+  });
+});
+
+describe('Sparkle prominence + checkerboard density (#1154 follow-up cosmetic)', () => {
+  it('renders Sparkle with at least 10 distinct dots so it reads on card-sized swatches', () => {
+    // The original Sparkle pattern was 4 dots — too subtle on a 200×60px
+    // banner. The fix bumps it to 13 mixed-size flecks. Pin the contract
+    // at "at least 10" so future tweaks have headroom without the test
+    // breaking on every adjustment.
+    render(<FilamentSwatch rgba="ff0000ff" effectType="sparkle" />);
+    const el = screen.getByTestId('filament-swatch');
+    const radialCount = (el.style.backgroundImage.match(/radial-gradient/g) ?? []).length;
+    expect(radialCount).toBeGreaterThanOrEqual(10);
+  });
+
+  it('uses fixed-pixel checkerboard tile so cell density is independent of swatch size', () => {
+    // Without per-layer background-size, ``cover`` stretched the conic
+    // gradient over the whole element and a card-sized banner only showed
+    // 4 huge cells. Verify the checker layer carries an explicit pixel
+    // tile size.
+    const bg = buildFilamentBackground({ rgba: 'ff0000ff' });
+    const sizes = bg.backgroundSize.split(',').map((s) => s.trim());
+    // Last layer is the checker; should be a fixed pixel tile, not 'cover'.
+    expect(sizes[sizes.length - 1]).toMatch(/^\d+px(\s+\d+px)?$/);
+    expect(sizes[sizes.length - 1]).not.toContain('cover');
   });
 });
 
 describe('buildFilamentBackground', () => {
-  it('emits the same layered background string the component renders', () => {
+  it('emits a CSS-style object with layered images and per-layer sizes', () => {
     const bg = buildFilamentBackground({
       rgba: 'ff0000ff',
       extraColors: 'aabbcc,ddeeff',
       effectType: 'matte',
     });
     // Effect overlay → colour layer → checkerboard, in that order.
-    expect(bg).toMatch(/linear-gradient/);
-    expect(bg).toMatch(/repeating-conic-gradient/);
-    expect(bg.toLowerCase()).toContain('#aabbcc');
-    expect(bg.toLowerCase()).toContain('#ddeeff');
+    expect(bg.backgroundImage).toMatch(/linear-gradient/);
+    expect(bg.backgroundImage).toMatch(/repeating-conic-gradient/);
+    expect(bg.backgroundImage.toLowerCase()).toContain('#aabbcc');
+    expect(bg.backgroundImage.toLowerCase()).toContain('#ddeeff');
+    // Per-layer sizes — three comma-separated values (effect/colour/checker)
+    // in the same order. The checker has a fixed pixel tile so the cell
+    // density doesn't scale with the element (#1154 follow-up).
+    const sizeParts = bg.backgroundSize.split(',').map((s) => s.trim());
+    expect(sizeParts).toHaveLength(3);
+    expect(sizeParts[2]).toMatch(/\d+px/);
   });
 
   it('returns a usable solid background when only rgba is provided', () => {
     const bg = buildFilamentBackground({ rgba: '00ff00ff' });
-    expect(bg.toLowerCase()).toContain('#00ff00ff');
-    expect(bg).toMatch(/repeating-conic-gradient/);
+    expect(bg.backgroundImage.toLowerCase()).toContain('#00ff00ff');
+    expect(bg.backgroundImage).toMatch(/repeating-conic-gradient/);
   });
 });

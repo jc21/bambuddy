@@ -68,8 +68,16 @@ export const FILAMENT_EFFECT_OPTIONS: ReadonlyArray<{
 // Checkerboard pattern shown beneath the colour layer so alpha < FF is
 // actually visible to the user. Kept as a pure gradient (no position/size)
 // so the value parses cleanly inside `background-image:` everywhere.
+//
+// Density is controlled by ``CHECKERBOARD_TILE_SIZE`` applied as
+// ``background-size`` on this layer specifically — without that,
+// ``backgroundSize: 'cover'`` would stretch the gradient to the whole
+// element and a card-sized swatch would only show 4 huge cells (#1154
+// follow-up reporter feedback). Per-layer sizing is supported by every
+// modern browser via comma-separated ``background-size``.
 export const CHECKERBOARD_BG =
   'repeating-conic-gradient(#cbcbcb 0% 25%, #f5f5f5 0% 50%)';
+export const CHECKERBOARD_TILE_SIZE = '12px 12px';
 
 /** Optional CSS overlay layer for variants that have a visual treatment.
  *  Variants without an entry are categorical labels only — they don't paint
@@ -77,12 +85,24 @@ export const CHECKERBOARD_BG =
  *  effect is to switch the colour layer to a conic-gradient (see
  *  `buildColorLayer`), not to add an overlay layer. */
 export const EFFECT_OVERLAYS: Partial<Record<FilamentEffect, string>> = {
-  // Sparkle: fine bright dots scattered across the swatch.
+  // Sparkle: bright flecks scattered across the swatch. The original 4-dot
+  // pattern was too subtle on card-sized swatches (#1154 follow-up); 13
+  // dots in mixed sizes (1px / 1.5px / 2px) and opacities give depth and
+  // make the variant clearly distinguishable from solid + multicolor.
   sparkle:
-    'radial-gradient(circle at 30% 20%, rgba(255,255,255,0.85) 0 1px, transparent 1.5px), ' +
-    'radial-gradient(circle at 70% 60%, rgba(255,255,255,0.7) 0 1px, transparent 1.5px), ' +
-    'radial-gradient(circle at 45% 75%, rgba(255,255,255,0.6) 0 1px, transparent 1.5px), ' +
-    'radial-gradient(circle at 80% 30%, rgba(255,255,255,0.5) 0 1px, transparent 1.5px)',
+    'radial-gradient(circle at 12% 18%, rgba(255,255,255,0.95) 0 1.5px, transparent 2px), ' +
+    'radial-gradient(circle at 28% 42%, rgba(255,255,255,0.85) 0 1px, transparent 1.5px), ' +
+    'radial-gradient(circle at 38% 78%, rgba(255,255,255,0.95) 0 1.5px, transparent 2px), ' +
+    'radial-gradient(circle at 52% 12%, rgba(255,255,255,0.80) 0 1px, transparent 1.5px), ' +
+    'radial-gradient(circle at 58% 55%, rgba(255,255,255,1) 0 2px, transparent 2.5px), ' +
+    'radial-gradient(circle at 68% 28%, rgba(255,255,255,0.75) 0 1px, transparent 1.5px), ' +
+    'radial-gradient(circle at 75% 88%, rgba(255,255,255,0.85) 0 1px, transparent 1.5px), ' +
+    'radial-gradient(circle at 82% 48%, rgba(255,255,255,0.95) 0 1.5px, transparent 2px), ' +
+    'radial-gradient(circle at 88% 18%, rgba(255,255,255,0.80) 0 1px, transparent 1.5px), ' +
+    'radial-gradient(circle at 92% 70%, rgba(255,255,255,0.85) 0 1px, transparent 1.5px), ' +
+    'radial-gradient(circle at 18% 62%, rgba(255,255,255,0.75) 0 1px, transparent 1.5px), ' +
+    'radial-gradient(circle at 45% 32%, rgba(255,255,255,0.65) 0 0.8px, transparent 1.2px), ' +
+    'radial-gradient(circle at 65% 72%, rgba(255,255,255,0.65) 0 0.8px, transparent 1.2px)',
   // Wood: subtle horizontal banding to mimic grain.
   wood:
     'repeating-linear-gradient(90deg, ' +
@@ -176,14 +196,18 @@ export function buildColorLayer(
 
 /** Public helper: produce a CSS background-image value (list of layered
  *  <image>s) for a filament, for callers that want to paint a banner or
- *  large area instead of using the swatch element. Pair with
- *  `background-size: cover` and the swatch logic stays consistent. */
+ *  large area instead of using the swatch element. Returns a
+ *  ``CSSProperties``-compatible object with ``backgroundImage`` and
+ *  ``backgroundSize`` so the checkerboard underlayer keeps a fixed tile
+ *  density regardless of element size — without per-layer sizing, a
+ *  card-sized banner only shows 4 huge checker cells.
+ */
 export function buildFilamentBackground(opts: {
   rgba?: string | null;
   extraColors?: string | null;
   effectType?: FilamentEffect | string | null;
   subtype?: string | null;
-}): string {
+}): { backgroundImage: string; backgroundSize: string } {
   const stops = parseStops(opts.extraColors);
   const colorLayer = buildColorLayer(opts.rgba, stops, opts.subtype, opts.effectType);
   const effectKey =
@@ -191,7 +215,18 @@ export function buildFilamentBackground(opts: {
       ? (opts.effectType as FilamentEffect)
       : null;
   const effectLayer = effectKey ? EFFECT_OVERLAYS[effectKey] ?? null : null;
-  return [effectLayer, colorLayer, CHECKERBOARD_BG]
-    .filter((layer): layer is string => Boolean(layer))
-    .join(', ');
+
+  // Layer order (top → bottom): effect overlay → colour layer → checkerboard.
+  // Per-layer background-size: 'cover' on the painted layers (so they fill
+  // the element) and the fixed tile size on the checkerboard so the cell
+  // count scales with the element rather than the element scaling the cells.
+  const layers: { image: string; size: string }[] = [];
+  if (effectLayer) layers.push({ image: effectLayer, size: 'cover' });
+  layers.push({ image: colorLayer, size: 'cover' });
+  layers.push({ image: CHECKERBOARD_BG, size: CHECKERBOARD_TILE_SIZE });
+
+  return {
+    backgroundImage: layers.map((l) => l.image).join(', '),
+    backgroundSize: layers.map((l) => l.size).join(', '),
+  };
 }
