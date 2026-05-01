@@ -1760,6 +1760,16 @@ async def run_migrations(conn):
         "CREATE INDEX IF NOT EXISTS ix_library_files_source_url ON library_files(source_url)",
     )
 
+    # Migration: Cache metadata title on pending uploads (#1152 follow-up).
+    # Without this column the review card always shows the FTP filename while
+    # the eventual archive's print_name comes from the 3MF metadata title,
+    # creating a confusing review→archive name mismatch. Captured at upload
+    # time so /pending-uploads/ list calls don't have to reopen each 3MF.
+    await _safe_execute(
+        conn,
+        "ALTER TABLE pending_uploads ADD COLUMN metadata_print_name VARCHAR(255)",
+    )
+
     # Migration: Per-user API key ownership + cloud-access scope (#1182).
     # user_id is nullable so legacy keys (created before #1182) survive the
     # migration; cloud routes reject calls from keys without an owner so the

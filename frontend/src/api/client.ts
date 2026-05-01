@@ -5652,6 +5652,11 @@ export interface VirtualPrinterModels {
 export interface PendingUpload {
   id: number;
   filename: string;
+  // Resolved name the review card should show — mirrors what archive_print
+  // will eventually write to PrintArchive.print_name (#1152 follow-up). Falls
+  // back to the stripped filename stem when the 3MF has no embedded title or
+  // the operator has chosen the "filename" archive-name source.
+  display_name: string;
   file_size: number;
   source_ip: string | null;
   status: string;
