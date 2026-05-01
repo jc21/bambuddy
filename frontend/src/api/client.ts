@@ -834,9 +834,11 @@ export interface APIKey {
   id: number;
   name: string;
   key_prefix: string;
+  user_id: number | null;  // Owner; null on legacy keys created before per-user ownership (#1182)
   can_queue: boolean;
   can_control_printer: boolean;
   can_read_status: boolean;
+  can_access_cloud: boolean;
   printer_ids: number[] | null;
   enabled: boolean;
   last_used: string | null;
@@ -849,6 +851,7 @@ export interface APIKeyCreate {
   can_queue?: boolean;
   can_control_printer?: boolean;
   can_read_status?: boolean;
+  can_access_cloud?: boolean;
   printer_ids?: number[] | null;
   expires_at?: string | null;
 }
@@ -862,6 +865,7 @@ export interface APIKeyUpdate {
   can_queue?: boolean;
   can_control_printer?: boolean;
   can_read_status?: boolean;
+  can_access_cloud?: boolean;
   printer_ids?: number[] | null;
   enabled?: boolean;
   expires_at?: string | null;
