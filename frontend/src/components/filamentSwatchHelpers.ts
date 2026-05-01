@@ -128,8 +128,16 @@ export function parseStops(extra: string | null | undefined): string[] {
 }
 
 /** Build the colour layer (gradient or solid) given rgba + stops + subtype/effect.
- *  A conic gradient is used when either subtype OR effect_type is `Multicolor`,
- *  giving the catalog editor a way to flag a multicolor variant directly. */
+ *  - ``multicolor`` (subtype OR effect): conic gradient — the swatch reads as
+ *    a colour wheel pie, distinct from a stripe.
+ *  - ``dual-color`` / ``tri-color`` (effect): hard-split horizontal bars with
+ *    no diagonal blend. A 2-stop Dual Color renders as left/right halves of
+ *    distinct colour, matching the way real dual-colour spools look on the
+ *    reel — without this, Gradient and Dual Color produced the same diagonal
+ *    blend and were visually indistinguishable (#1154 follow-up).
+ *  - everything else (``gradient`` and the default): a smooth 135° linear
+ *    gradient across the stops, the original visual for blended-stop spools.
+ */
 export function buildColorLayer(
   rgba: string | null | undefined,
   stops: string[],
@@ -143,11 +151,25 @@ export function buildColorLayer(
   }
   // With stops we ignore the single rgba and gradient across the stops.
   const allStops = stops.length === 1 ? [stops[0], stops[0]] : stops;
-  const isMulticolor =
-    (subtype ?? '').toLowerCase() === 'multicolor' ||
-    (effectType ?? '').toLowerCase() === 'multicolor';
-  if (isMulticolor) {
+  const subtypeLower = (subtype ?? '').toLowerCase();
+  const effectLower = (effectType ?? '').toLowerCase();
+  if (subtypeLower === 'multicolor' || effectLower === 'multicolor') {
     return `conic-gradient(from 0deg, ${allStops.join(', ')}, ${allStops[0]})`;
+  }
+  if (effectLower === 'dual-color' || effectLower === 'tri-color') {
+    // Equal-width hard-split bars: each stop occupies its own contiguous
+    // segment with no blend across the boundary. CSS double-position stops
+    // (``c X% Y%``) collapse the transition zone to zero so the colour
+    // change is a hard vertical line rather than a diagonal smear.
+    const n = allStops.length;
+    const segments = allStops
+      .map((c, i) => {
+        const start = ((i / n) * 100).toFixed(3);
+        const end = (((i + 1) / n) * 100).toFixed(3);
+        return `${c} ${start}% ${end}%`;
+      })
+      .join(', ');
+    return `linear-gradient(to right, ${segments})`;
   }
   return `linear-gradient(135deg, ${allStops.join(', ')})`;
 }
