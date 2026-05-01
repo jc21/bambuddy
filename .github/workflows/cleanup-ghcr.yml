@@ -19,6 +19,12 @@ on:
         type: boolean
         default: false
 
+# This workflow authenticates exclusively via GHCR_CLEANUP_TOKEN (a classic PAT)
+# and never reads/writes via the default GITHUB_TOKEN. Strip every permission
+# from the GITHUB_TOKEN so a stolen workflow run can't reach the repo at all
+# — least privilege per CodeQL `actions/missing-workflow-permissions`.
+permissions: {}
+
 jobs:
   cleanup:
     runs-on: ubuntu-latest
