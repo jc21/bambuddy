@@ -284,6 +284,7 @@ export function Layout() {
       projects: 'projects:read',
       inventory: 'inventory:read',
       files: 'library:read',
+      makerworld: 'makerworld:view',
       settings: 'settings:read',
       notifications: 'notifications:user_email',
     };
