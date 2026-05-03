@@ -236,7 +236,8 @@ Perfect for remote print farms, traveling makers, or accessing your home printer
 - Interactive API browser with live testing
 
 ### 🖨️ Virtual Printer & Remote Printing
-- **🌐 Proxy Mode (NEW!)** — Print remotely from anywhere via secure TLS relay
+- **🌐 Proxy Mode** — Print remotely from anywhere via secure TLS relay
+- **🪞 Live target-printer mirror in non-proxy modes (NEW!)** — Immediate / Review / Queue VPs now mirror their target printer's live state to the slicer: AMS slot contents, FTS / dual-extruder routing, k-profiles, AMS load / dry / calibration commands, and the camera stream all flow through the VP. Use the slicer as a full remote for the printer behind the VP without giving up Bambuddy's queue / archive / dispatch features.
 - Emulates a Bambu Lab printer on your network
 - Send prints directly from Bambu Studio/Orca Slicer
 - Configurable printer model (X1C, P1S, A1, H2D, etc.)
