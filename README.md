@@ -60,7 +60,7 @@ You don't need to be a developer for the docs or moderator roles. If you enjoy w
 **Print from anywhere in the world** — Bambuddy's new Proxy Mode acts as a secure relay between your slicer and printer:
 
 - 🔒 **End-to-end TLS encryption** — FTP, file transfer, and camera are transparently proxied with the printer's real TLS certificate
-- 🛡️ **Optional Tailscale integration** — per-VP toggle + Docker socket mount brings Bambuddy into your tailnet, so virtual printers are reachable from any tailnet device over a private WireGuard tunnel without port forwarding ([setup](https://wiki.bambuddy.cool/features/virtual-printer/)). Bambuddy's self-signed CA import is still required for the slicer side because both Bambu Studio and OrcaSlicer only accept IP addresses in the Add Printer dialog — the Tailscale benefit here is the tunnel, not cert-import elimination.
+- 🛡️ **Optional Tailscale integration** — per-VP toggle + Docker socket mount surface the host's Tailscale IP on the VP card, so you know which `100.x.x.x` to paste into the slicer when you want a virtual printer reachable over your tailnet ([setup](https://wiki.bambuddy.cool/features/virtual-printer/)). Bambuddy's self-signed CA import is still required for the slicer side — the Bambu Studio / OrcaSlicer printer-MQTT trust path uses a bundled BBL CA, not the system trust store, so even a publicly-trusted cert wouldn't help. Tailscale's role is the private tunnel (reachability from anywhere, no port forwarding), not cert-import elimination.
 - 🌍 **No cloud dependency** — Direct connection through your own Bambuddy server
 - 🔑 **Uses printer's access code** — No additional credentials needed
 - ⚡ **Full-speed printing** — Transparent TCP proxy, only MQTT is decrypted for IP rewriting
