@@ -1000,6 +1000,8 @@ export interface AppSettings {
   obico_action: 'notify' | 'pause' | 'pause_and_off';
   obico_poll_interval: number;
   obico_enabled_printers: string;
+  // Inventory forecasting global lead time
+  forecast_global_lead_time_days: number;
 }
 
 export type AppSettingsUpdate = Partial<AppSettings>;
@@ -1852,6 +1854,9 @@ export interface NotificationProvider {
   on_bed_cooled: boolean;
   // First layer complete
   on_first_layer_complete: boolean;
+  // Inventory stock alerts
+  on_stock_reorder_alert: boolean;
+  on_stock_break_alert: boolean;
   // Print queue events
   on_queue_job_added: boolean;
   on_queue_job_assigned: boolean;
@@ -1907,6 +1912,9 @@ export interface NotificationProviderCreate {
   on_bed_cooled?: boolean;
   // First layer complete
   on_first_layer_complete?: boolean;
+  // Inventory stock alerts
+  on_stock_reorder_alert?: boolean;
+  on_stock_break_alert?: boolean;
   // Print queue events
   on_queue_job_added?: boolean;
   on_queue_job_assigned?: boolean;
@@ -1955,6 +1963,9 @@ export interface NotificationProviderUpdate {
   on_bed_cooled?: boolean;
   // First layer complete
   on_first_layer_complete?: boolean;
+  // Inventory stock alerts
+  on_stock_reorder_alert?: boolean;
+  on_stock_break_alert?: boolean;
   // Print queue events
   on_queue_job_added?: boolean;
   on_queue_job_assigned?: boolean;
@@ -2354,6 +2365,37 @@ export interface SpoolAssignment {
   ams_label?: string | null;  // User-defined friendly name for the AMS unit
 }
 
+export interface FilamentSkuSettings {
+  id: number;
+  material: string;
+  subtype: string | null;
+  brand: string | null;
+  lead_time_days: number;
+  safety_margin_value: number;
+  safety_margin_unit: 'days' | 'g';
+  alerts_snoozed: boolean;
+}
+
+export interface ShoppingListItem {
+  id: number;
+  material: string;
+  subtype: string | null;
+  brand: string | null;
+  quantity_spools: number;
+  note: string | null;
+  status: 'pending' | 'purchased' | 'received';
+  purchased_at: string | null;
+  added_at: string;
+}
+
+export interface ShoppingListItemCreate {
+  material: string;
+  subtype: string | null;
+  brand: string | null;
+  quantity_spools: number;
+  note?: string | null;
+}
+
 // Update types
 export interface VersionInfo {
   version: string;
@@ -2497,6 +2539,7 @@ export type Permission =
   | 'projects:read' | 'projects:create' | 'projects:update' | 'projects:delete'
   | 'filaments:read' | 'filaments:create' | 'filaments:update' | 'filaments:delete'
   | 'inventory:read' | 'inventory:create' | 'inventory:update' | 'inventory:delete' | 'inventory:view_assignments'
+  | 'inventory:forecast_read' | 'inventory:forecast_write'
   | 'smart_plugs:read' | 'smart_plugs:create' | 'smart_plugs:update' | 'smart_plugs:delete' | 'smart_plugs:control'
   | 'camera:view'
   | 'maintenance:read' | 'maintenance:create' | 'maintenance:update' | 'maintenance:delete'
@@ -4475,6 +4518,29 @@ export const api = {
     request<{ status: string }>(`/inventory/spools/${spoolId}/usage`, { method: 'DELETE' }),
   syncWeightsFromAms: () =>
     request<{ synced: number; skipped: number }>('/inventory/sync-ams-weights', { method: 'POST' }),
+  getSkuSettings: () =>
+    request<FilamentSkuSettings[]>('/inventory/sku-settings'),
+  upsertSkuSettings: (data: Omit<FilamentSkuSettings, 'id'>) =>
+    request<FilamentSkuSettings>('/inventory/sku-settings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getShoppingList: () =>
+    request<ShoppingListItem[]>('/inventory/shopping-list'),
+  addToShoppingList: (data: ShoppingListItemCreate) =>
+    request<ShoppingListItem>('/inventory/shopping-list', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  removeFromShoppingList: (id: number) =>
+    request<{ status: string }>(`/inventory/shopping-list/${id}`, { method: 'DELETE' }),
+  clearShoppingList: () =>
+    request<{ deleted: number }>('/inventory/shopping-list', { method: 'DELETE' }),
+  updateShoppingListStatus: (id: number, status: 'pending' | 'purchased' | 'received') =>
+    request<ShoppingListItem>(`/inventory/shopping-list/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
   getFilamentPresets: () =>
     request<SlicerSetting[]>('/cloud/filaments'),
 
