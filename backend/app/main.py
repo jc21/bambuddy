@@ -32,6 +32,7 @@ from backend.app.api.routes import (
     groups,
     inventory,
     kprofiles,
+    labels,
     library,
     library_trash,
     local_backup,
@@ -5045,6 +5046,7 @@ app.include_router(printers.router, prefix=app_settings.api_prefix)
 app.include_router(archives.router, prefix=app_settings.api_prefix)
 app.include_router(filaments.router, prefix=app_settings.api_prefix)
 app.include_router(inventory.router, prefix=app_settings.api_prefix)
+app.include_router(labels.router, prefix=app_settings.api_prefix)
 app.include_router(settings_routes.router, prefix=app_settings.api_prefix)
 app.include_router(cloud.router, prefix=app_settings.api_prefix)
 app.include_router(local_presets.router, prefix=app_settings.api_prefix)
