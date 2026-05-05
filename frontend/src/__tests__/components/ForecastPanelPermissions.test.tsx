@@ -113,23 +113,6 @@ function mockReadOnlyAccess() {
   );
 }
 
-function mockReadWriteAccess() {
-  setFakeToken();
-  server.use(
-    http.get('*/api/v1/auth/status', () =>
-      HttpResponse.json({ auth_enabled: true, requires_setup: false }),
-    ),
-    http.get('*/api/v1/auth/me', () =>
-      HttpResponse.json({
-        id: 1,
-        username: 'operator',
-        is_admin: false,
-        permissions: ['inventory:forecast_read', 'inventory:forecast_write'],
-      }),
-    ),
-  );
-}
-
 // ── ForecastPanel read guard ──────────────────────────────────────────────────
 
 describe('ForecastPanel — read permission guard', () => {
