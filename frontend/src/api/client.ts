@@ -1155,6 +1155,13 @@ export interface PresetRef {
   source: PresetSource;
   id: string;
 }
+export interface SliceBundleSpec {
+  bundle_id: string;
+  printer_name: string;
+  process_name: string;
+  // Per-slot filament names in plate order. Index 0 = slot 1, etc.
+  filament_names: string[];
+}
 export interface SliceRequest {
   printer_preset_id?: number;
   process_preset_id?: number;
@@ -1167,6 +1174,11 @@ export interface SliceRequest {
   // backend validator promotes a singular into a one-element list when this
   // is omitted, so legacy single-color clients keep working unchanged.
   filament_presets?: PresetRef[];
+  // Bundle dispatch: when set, the backend skips PresetRef resolution and
+  // picks the JSON triplet from a sidecar-stored .bbscfg by name. Mutually
+  // exclusive with the preset fields above (validator accepts both, but
+  // dispatch ignores the preset side when bundle is set).
+  bundle?: SliceBundleSpec;
   plate?: number;
   export_3mf?: boolean;
 }
