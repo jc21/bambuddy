@@ -1171,6 +1171,20 @@ export interface SliceRequest {
   export_3mf?: boolean;
 }
 
+// GET /api/v1/slicer/bundles — Printer Preset Bundles imported from
+// BambuStudio's "File → Export → Export Preset Bundle" dialog. Each bundle
+// is a .bbscfg zip the user uploads once per printer, after which the
+// SliceModal can pick its inner presets by name (no re-upload per slice).
+// Backend: backend/app/api/routes/slicer_presets.py — bundle endpoints.
+export interface SlicerBundle {
+  id: string;
+  printer_preset_name: string;
+  printer: string[];
+  process: string[];
+  filament: string[];
+  version: string | null;
+}
+
 // GET /api/v1/slicer/presets — unified listing across cloud / local / standard.
 export type SlicerCloudStatus = 'ok' | 'not_authenticated' | 'expired' | 'unreachable';
 export interface UnifiedPreset {
@@ -3776,10 +3790,31 @@ export const api = {
   },
   getArchivePlates: (archiveId: number) =>
     request<ArchivePlatesResponse>(`/archives/${archiveId}/plates`),
-  getArchiveFilamentRequirements: (archiveId: number, plateId?: number, requestId?: string) => {
+  getArchiveFilamentRequirements: (
+    archiveId: number,
+    plateId?: number,
+    requestId?: string,
+    // Optional bundle context: when supplied, the backend's preview slice
+    // (run for unsliced project files) uses slice_with_bundle so gram
+    // numbers reflect the same triplet the real print will use. All four
+    // fields must be set for the bundle path to engage; partial context
+    // falls back to the embedded-settings preview without erroring.
+    bundle?: {
+      bundle_id: string;
+      printer_name: string;
+      process_name: string;
+      filament_names: string[];
+    },
+  ) => {
     const qs = new URLSearchParams();
     if (plateId !== undefined) qs.set('plate_id', String(plateId));
     if (requestId) qs.set('request_id', requestId);
+    if (bundle) {
+      qs.set('bundle_id', bundle.bundle_id);
+      qs.set('printer_name', bundle.printer_name);
+      qs.set('process_name', bundle.process_name);
+      qs.set('filament_names', bundle.filament_names.join(';'));
+    }
     return request<{
       archive_id: number;
       filename: string;
@@ -5141,10 +5176,28 @@ export const api = {
     }),
   getLibraryFilePlates: (fileId: number) =>
     request<LibraryFilePlatesResponse>(`/library/files/${fileId}/plates`),
-  getLibraryFileFilamentRequirements: (fileId: number, plateId?: number, requestId?: string) => {
+  getLibraryFileFilamentRequirements: (
+    fileId: number,
+    plateId?: number,
+    requestId?: string,
+    // Optional bundle context — see getArchiveFilamentRequirements above
+    // for the contract. Same shape so callers can share a builder helper.
+    bundle?: {
+      bundle_id: string;
+      printer_name: string;
+      process_name: string;
+      filament_names: string[];
+    },
+  ) => {
     const qs = new URLSearchParams();
     if (plateId !== undefined) qs.set('plate_id', String(plateId));
     if (requestId) qs.set('request_id', requestId);
+    if (bundle) {
+      qs.set('bundle_id', bundle.bundle_id);
+      qs.set('printer_name', bundle.printer_name);
+      qs.set('process_name', bundle.process_name);
+      qs.set('filament_names', bundle.filament_names.join(';'));
+    }
     return request<{
       file_id: number;
       filename: string;
@@ -5268,6 +5321,35 @@ export const api = {
   // backend/app/api/routes/slicer_presets.py for the priority rules.
   getSlicerPresets: () =>
     request<UnifiedPresetsResponse>('/slicer/presets'),
+
+  // Slicer Bundles (.bbscfg) — Printer Preset Bundles imported from BambuStudio.
+  // Settings → Slicer Bundles uploads/lists/deletes; the SliceModal picks
+  // presets by name from a chosen bundle (separate follow-up).
+  listSlicerBundles: () =>
+    request<SlicerBundle[]>('/slicer/bundles'),
+  importSlicerBundle: (file: File) => {
+    // The /slicer/bundles upload accepts multipart with field name "file"
+    // (matches the FastAPI route's UploadFile parameter). Bypass `request`
+    // because it always JSON-stringifies the body — multipart needs the
+    // browser to set the boundary in the Content-Type header.
+    const fd = new FormData();
+    fd.append('file', file);
+    return fetch(`${API_BASE}/slicer/bundles`, {
+      method: 'POST',
+      headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
+      body: fd,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      return res.json() as Promise<SlicerBundle>;
+    });
+  },
+  deleteSlicerBundle: (bundleId: string) =>
+    request<void>(`/slicer/bundles/${encodeURIComponent(bundleId)}`, {
+      method: 'DELETE',
+    }),
 
   // Local Presets (OrcaSlicer imports)
   getLocalPresets: () =>
