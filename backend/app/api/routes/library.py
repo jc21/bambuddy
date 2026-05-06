@@ -2782,29 +2782,37 @@ async def _run_slicer_with_fallback(
         SlicerInputError,
     )
 
-    # Resolve each slot via the source-aware resolver. The schema validator
-    # has already normalised legacy `*_preset_id: int` fields into
-    # `PresetRef(source='local', id=str(int))`, so all three are guaranteed
-    # non-None here.
-    user: User | None = None
-    if current_user_id is not None:
-        user = await db.get(User, current_user_id)
+    # Bundle dispatch path: when SliceRequest.bundle is set, the schema
+    # validator short-circuited the presets-required check, so the
+    # PresetRef fields may all be None. Skip resolve_preset_ref entirely
+    # — the sidecar will materialise the per-category JSONs from the
+    # bundle's extracted directory at slice time.
+    use_bundle = request.bundle is not None
 
+    user: User | None = None
     presets: dict[str, str] = {}
-    refs = {
-        "printer": request.printer_preset,
-        "process": request.process_preset,
-    }
-    for slot, ref in refs.items():
-        assert ref is not None, "schema validator guarantees PresetRef is set"
-        presets[slot] = await resolve_preset_ref(db, user, ref, slot)
-    # Multi-color: resolve each filament slot in plate order. The schema
-    # validator backfilled `filament_presets` from the legacy `filament_preset`
-    # field for single-color callers, so this list is always non-empty.
     filament_jsons: list[str] = []
-    for ref in request.filament_presets:
-        assert ref is not None, "schema validator guarantees filament list is non-None"
-        filament_jsons.append(await resolve_preset_ref(db, user, ref, "filament"))
+    if not use_bundle:
+        # Resolve each slot via the source-aware resolver. The schema
+        # validator has already normalised legacy `*_preset_id: int`
+        # fields into `PresetRef(source='local', id=str(int))`, so all
+        # three are guaranteed non-None here.
+        if current_user_id is not None:
+            user = await db.get(User, current_user_id)
+
+        refs = {
+            "printer": request.printer_preset,
+            "process": request.process_preset,
+        }
+        for slot, ref in refs.items():
+            assert ref is not None, "schema validator guarantees PresetRef is set"
+            presets[slot] = await resolve_preset_ref(db, user, ref, slot)
+        # Multi-color: resolve each filament slot in plate order. The schema
+        # validator backfilled `filament_presets` from the legacy `filament_preset`
+        # field for single-color callers, so this list is always non-empty.
+        for ref in request.filament_presets:
+            assert ref is not None, "schema validator guarantees filament list is non-None"
+            filament_jsons.append(await resolve_preset_ref(db, user, ref, "filament"))
 
     # Slicer routing — pick the sidecar URL by preferred_slicer.
     # The per-install URL setting (Settings UI → Slicer card) wins; an
@@ -2871,17 +2879,35 @@ async def _run_slicer_with_fallback(
         progress_callback = _on_progress
     try:
         try:
-            result = await service.slice_with_profiles(
-                model_bytes=primary_bytes,
-                model_filename=model_filename,
-                printer_profile_json=presets["printer"],
-                process_profile_json=presets["process"],
-                filament_profile_jsons=filament_jsons,
-                plate=request.plate,
-                export_3mf=request.export_3mf,
-                request_id=progress_request_id,
-                on_progress=progress_callback,
-            )
+            if use_bundle:
+                # Bundle dispatch: sidecar materialises the JSON triplet
+                # from the stored .bbscfg by name. ``request.bundle`` is
+                # guaranteed non-None here by the use_bundle branch above.
+                assert request.bundle is not None
+                result = await service.slice_with_bundle(
+                    model_bytes=primary_bytes,
+                    model_filename=model_filename,
+                    bundle_id=request.bundle.bundle_id,
+                    printer_name=request.bundle.printer_name,
+                    process_name=request.bundle.process_name,
+                    filament_names=request.bundle.filament_names,
+                    plate=request.plate,
+                    export_3mf=request.export_3mf,
+                    request_id=progress_request_id,
+                    on_progress=progress_callback,
+                )
+            else:
+                result = await service.slice_with_profiles(
+                    model_bytes=primary_bytes,
+                    model_filename=model_filename,
+                    printer_profile_json=presets["printer"],
+                    process_profile_json=presets["process"],
+                    filament_profile_jsons=filament_jsons,
+                    plate=request.plate,
+                    export_3mf=request.export_3mf,
+                    request_id=progress_request_id,
+                    on_progress=progress_callback,
+                )
         except SlicerApiServerError as exc:
             if not is_3mf:
                 raise
@@ -2896,7 +2922,11 @@ async def _run_slicer_with_fallback(
             # bytes — the embedded-settings path also reads the same
             # project_settings.config and the same range validator runs
             # there too, so without sanitisation the fallback would die
-            # on the same sentinel error (#1201).
+            # on the same sentinel error (#1201). Same fallback applies
+            # to the bundle path: if the resolved triplet crashes the CLI,
+            # embedded settings give the user *something* rather than a
+            # hard failure (the SliceModal flags the difference via
+            # used_embedded_settings).
             result = await service.slice_without_profiles(
                 model_bytes=primary_bytes,
                 model_filename=model_filename,
