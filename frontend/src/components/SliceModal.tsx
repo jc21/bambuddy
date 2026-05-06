@@ -407,14 +407,20 @@ export function SliceModal({ source, onClose }: SliceModalProps) {
     !!printerProfileName &&
     !printerProfileName.toLowerCase().includes(sourcePrinterModel.toLowerCase());
 
-  // Slice button stays disabled while the printer mismatch warning is
-  // visible: clicking it would silently fall back to embedded settings and
-  // produce a wrong-printer file, the exact UX bug the warning is here to
-  // prevent. Only re-enable when the user picks a matching profile (or
-  // cloud preset whose name we can't parse).
+  // Slice button stays disabled until *all* of these hold:
+  //   - the preview slice / embedded-metadata read has succeeded so we know
+  //     the per-plate filament slot list is final
+  //     (filamentReqsQuery.isSuccess). Without this gate the synthetic
+  //     single-slot fallback would auto-enable the button on opaque
+  //     defaults, before the slicer has even returned the real slot map.
+  //   - printer + process picked, every filament slot has a profile (the
+  //     auto-pick fills these once filamentSlots arrives)
+  //   - no printer-mismatch warning is up (clicking would silently fall
+  //     back to embedded settings and produce a wrong-printer file)
   const isReady =
     printerPreset != null &&
     processPreset != null &&
+    filamentReqsQuery.isSuccess &&
     filamentPresets.length > 0 &&
     filamentPresets.every((r) => r != null) &&
     !printerMismatch;

@@ -138,7 +138,8 @@ describe('SliceModal', () => {
     expect(selects[1].value).toBe('local:2');
     expect(selects[2].value).toBe('local:3');
 
-    // Slice button is enabled because all three slots auto-defaulted.
+    // Slice button is enabled because all three slots auto-defaulted and
+    // the preview-slice query has resolved (mock returns immediately).
     const sliceBtn = screen.getByRole('button', { name: /^Slice$/ });
     expect((sliceBtn as HTMLButtonElement).disabled).toBe(false);
   });
