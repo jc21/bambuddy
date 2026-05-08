@@ -107,7 +107,15 @@ class TestSettingsScrubForApiKey:
 
 
 class TestRceEndpointPermissions:
-    """T-Gap 2: System command endpoints require SETTINGS_UPDATE permission."""
+    """T-Gap 2 (revised): system_command was originally gated on SETTINGS_UPDATE
+    but that locked out kiosk operators (who hold INVENTORY_UPDATE-only keys)
+    from the QuickMenu's Restart-Daemon / Restart-Browser / Reboot / Shutdown
+    buttons — the only way to recover the kiosk from the kiosk itself. Risk
+    is bounded: only the 4 named commands are accepted (no RCE), reboot and
+    shutdown require physical-access recovery, and the same operator already
+    controls printers + weighs spools on the same device. The /update route
+    (full firmware upgrade) keeps SETTINGS_UPDATE because it can replace the
+    daemon binary, which is a different threat surface."""
 
     @pytest.fixture
     async def auth_enabled(self, db_session):
@@ -151,7 +159,7 @@ class TestRceEndpointPermissions:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_system_command_requires_settings_update(
+    async def test_system_command_accepts_inventory_update(
         self,
         async_client: AsyncClient,
         db_session,
@@ -159,12 +167,20 @@ class TestRceEndpointPermissions:
         inventory_only_api_key,
         spoolbuddy_device,
     ):
+        """T-Gap 2 (revised): system_command was lowered from SETTINGS_UPDATE
+        to INVENTORY_UPDATE so kiosk operators can use the QuickMenu buttons.
+        An inventory-only key must NOT 403 — it should reach the route's
+        device-state check (and 409 for offline device, since the test
+        fixture doesn't set last_seen).
+        """
         resp = await async_client.post(
             f"/api/v1/spoolbuddy/devices/{spoolbuddy_device.device_id}/system/command",
             json={"command": "reboot"},
             headers={"X-API-Key": inventory_only_api_key},
         )
-        assert resp.status_code == 403
+        # Permission accepted — fails on device-state, not on auth.
+        assert resp.status_code == 409
+        assert "offline" in resp.json()["detail"].lower()
 
     @pytest.mark.asyncio
     @pytest.mark.integration

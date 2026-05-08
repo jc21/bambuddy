@@ -1123,7 +1123,14 @@ async def queue_system_command(
     device_id: str,
     req: SystemCommandRequest,
     db: AsyncSession = Depends(get_db),
-    _: User | None = RequirePermissionIfAuthEnabled(Permission.SETTINGS_UPDATE),
+    # Aligns with the rest of the kiosk-scoped device routes (calibration,
+    # display, cancel-write, command-result — all INVENTORY_UPDATE). The
+    # previous SETTINGS_UPDATE gate locked operators out of the QuickMenu's
+    # Restart-Daemon / Restart-Browser / Reboot / Shutdown buttons even
+    # though they had access to every other operation on the same device.
+    # Reboot and shutdown remain recoverable via physical access — the
+    # operator already has the kiosk in front of them.
+    _: User | None = RequirePermissionIfAuthEnabled(Permission.INVENTORY_UPDATE),
 ):
     """Queue a system command (reboot, shutdown, restart_daemon, restart_browser) for the SpoolBuddy device."""
     if req.command not in VALID_SYSTEM_COMMANDS:
