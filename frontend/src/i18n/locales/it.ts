@@ -5439,6 +5439,11 @@ export default {
       deleteFailed: 'Impossibile rimuovere il file dalla libreria.',
     },
   },
+  gcodeViewer: {
+    back: 'Indietro',
+    backToArchives: 'Torna agli archivi di stampa',
+    backToFiles: 'Torna al gestore file',
+  },
   libraryTrash: {
     title: 'Cestino',
     headerButton: 'Cestino',

@@ -5439,6 +5439,11 @@ export default {
       deleteFailed: 'Não foi possível remover o arquivo da biblioteca.',
     },
   },
+  gcodeViewer: {
+    back: 'Voltar',
+    backToArchives: 'Voltar para os arquivos de impressão',
+    backToFiles: 'Voltar para o gerenciador de arquivos',
+  },
   libraryTrash: {
     title: 'Lixeira',
     headerButton: 'Lixeira',

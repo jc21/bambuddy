@@ -5460,6 +5460,11 @@ export default {
       deleteFailed: 'Could not remove the file from the library.',
     },
   },
+  gcodeViewer: {
+    back: 'Back',
+    backToArchives: 'Back to Print Archives',
+    backToFiles: 'Back to File Manager',
+  },
   libraryTrash: {
     title: 'Trash',
     headerButton: 'Trash',

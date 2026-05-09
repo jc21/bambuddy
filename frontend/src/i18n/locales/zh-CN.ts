@@ -5438,6 +5438,11 @@ export default {
       deleteFailed: '无法从资料库中移除文件。',
     },
   },
+  gcodeViewer: {
+    back: '返回',
+    backToArchives: '返回打印归档',
+    backToFiles: '返回文件管理器',
+  },
   libraryTrash: {
     title: '回收站',
     headerButton: '回收站',

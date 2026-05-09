@@ -5440,6 +5440,11 @@ export default {
       deleteFailed: 'Impossible de retirer le fichier de la bibliothèque.',
     },
   },
+  gcodeViewer: {
+    back: 'Retour',
+    backToArchives: 'Retour aux archives d\'impression',
+    backToFiles: 'Retour au gestionnaire de fichiers',
+  },
   libraryTrash: {
     title: 'Corbeille',
     headerButton: 'Corbeille',

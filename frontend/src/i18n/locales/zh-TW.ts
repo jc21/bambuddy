@@ -5438,6 +5438,11 @@ export default {
       deleteFailed: '無法從資料庫中移除檔案。',
     },
   },
+  gcodeViewer: {
+    back: '返回',
+    backToArchives: '返回列印歸檔',
+    backToFiles: '返回檔案管理器',
+  },
   libraryTrash: {
     title: '資源回收筒',
     headerButton: '資源回收筒',

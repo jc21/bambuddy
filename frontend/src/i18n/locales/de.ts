@@ -5451,6 +5451,11 @@ export default {
       deleteFailed: 'Datei konnte nicht aus der Bibliothek entfernt werden.',
     },
   },
+  gcodeViewer: {
+    back: 'Zurück',
+    backToArchives: 'Zurück zum Druckarchiv',
+    backToFiles: 'Zurück zum Dateimanager',
+  },
   libraryTrash: {
     title: 'Papierkorb',
     headerButton: 'Papierkorb',

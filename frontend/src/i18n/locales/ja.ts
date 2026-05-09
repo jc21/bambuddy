@@ -5451,6 +5451,11 @@ export default {
       deleteFailed: 'ライブラリからファイルを削除できませんでした。',
     },
   },
+  gcodeViewer: {
+    back: '戻る',
+    backToArchives: '印刷アーカイブに戻る',
+    backToFiles: 'ファイル管理に戻る',
+  },
   libraryTrash: {
     title: 'ゴミ箱',
     headerButton: 'ゴミ箱',
