@@ -5,7 +5,8 @@
 <h1 align="center">Bambuddy</h1>
 
 <p align="center">
-  <strong>Self-hosted print archive and management system for Bambu Lab 3D printers</strong>
+  <strong>Your printers. No cloud. Your rules.</strong><br>
+  Self-hosted command center for Bambu Lab &mdash; from one A1 to a 40-printer farm.
 </p>
 
 <p align="center">
