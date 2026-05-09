@@ -3431,6 +3431,10 @@ export default {
           label: 'AMS holder (30 × 15 mm)',
           hint: 'Single label per page; fits the popular AMS filament label holder.',
         },
+        box40x30: {
+          label: '盒标签 (40 × 30 mm)',
+          hint: '每页一张；常见的 DK/Brother 卷尺寸，适合给耗材袋和储物盒贴标签。',
+        },
         box: {
           label: 'Box label (62 × 29 mm)',
           hint: 'Single label per page; sized for Brother PT/QL and Dymo small labels.',

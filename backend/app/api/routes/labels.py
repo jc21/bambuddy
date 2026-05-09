@@ -38,6 +38,7 @@ router = APIRouter(tags=["labels"])
 
 _VALID_TEMPLATES: tuple[TemplateName, ...] = (
     "ams_30x15",
+    "box_40x30",
     "box_62x29",
     "avery_5160",
     "avery_l7160",
@@ -50,7 +51,7 @@ MAX_LABELS_PER_REQUEST = 500
 
 class LabelRequest(BaseModel):
     spool_ids: list[int] = Field(..., min_length=1, max_length=MAX_LABELS_PER_REQUEST)
-    template: Literal["ams_30x15", "box_62x29", "avery_5160", "avery_l7160"]
+    template: Literal["ams_30x15", "box_40x30", "box_62x29", "avery_5160", "avery_l7160"]
 
 
 def _split_extra_colors(raw: str | None) -> list[str] | None:
