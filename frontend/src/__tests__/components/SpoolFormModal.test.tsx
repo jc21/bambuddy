@@ -112,6 +112,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={existingSpool}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -144,6 +145,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={existingSpool}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -220,6 +222,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolWithCatalogId}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -314,6 +317,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolWithCost}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -347,6 +351,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolWithoutCost}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -383,6 +388,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolWithBadRgba}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -415,6 +421,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={existingSpool} // rgba = 'FF0000FF' (valid)
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -445,6 +452,7 @@ describe('SpoolFormModal weightTouched', () => {
       <SpoolFormModal
         isOpen={true}
         onClose={vi.fn()}
+        mode="create"
         currencySymbol="$"
         spoolmanMode={true}
       />
@@ -498,6 +506,7 @@ describe('SpoolFormModal weightTouched', () => {
       <SpoolFormModal
         isOpen={true}
         onClose={vi.fn()}
+        mode="create"
         currencySymbol="$"
         spoolmanMode={true}
       />
@@ -556,6 +565,7 @@ describe('SpoolFormModal weightTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolWithCatalogId}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -622,6 +632,7 @@ describe('SpoolFormModal Spoolman K-profile support', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolmanSpool}
+        mode="edit"
         currencySymbol="$"
         spoolmanMode={true}
       />
@@ -641,6 +652,7 @@ describe('SpoolFormModal Spoolman K-profile support', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolmanSpool}
+        mode="edit"
         currencySymbol="$"
         spoolmanMode={true}
       />
@@ -838,6 +850,7 @@ describe('SpoolFormModal storageLocationTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolWithStorageLocation}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -868,6 +881,7 @@ describe('SpoolFormModal storageLocationTouched', () => {
         isOpen={true}
         onClose={vi.fn()}
         spool={spoolWithStorageLocation}
+        mode="edit"
         currencySymbol="$"
       />
     );
@@ -919,5 +933,83 @@ describe('SpoolFormModal storageLocationTouched', () => {
     const [payload] = vi.mocked(api.createSpool).mock.calls[0];
     // storage_location MUST be included for new spools (default empty string → null)
     expect(payload).toHaveProperty('storage_location', null);
+  });
+});
+
+describe('SpoolFormModal copy mode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows "Copy Spool" as the modal title when spool and mode="copy" are passed', async () => {
+    render(
+      <SpoolFormModal
+        isOpen={true}
+        onClose={vi.fn()}
+        spool={existingSpool}
+        mode="copy"
+        currencySymbol="$"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Copy Spool' })).toBeInTheDocument();
+    });
+  });
+
+  it('calls api.createSpool (not api.updateSpool) when saving in copy mode', async () => {
+    render(
+      <SpoolFormModal
+        isOpen={true}
+        onClose={vi.fn()}
+        spool={existingSpool}
+        mode="copy"
+        currencySymbol="$"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Copy Spool' })).toBeInTheDocument();
+    });
+
+    // The save button label is "Copy Spool" in copy mode
+    const saveBtn = screen.getAllByRole('button', { name: /copy spool/i })
+      .find(btn => btn.tagName === 'BUTTON' && btn.querySelector('svg'));
+    expect(saveBtn).toBeTruthy();
+    fireEvent.click(saveBtn!);
+
+    await waitFor(() => {
+      expect(api.createSpool).toHaveBeenCalledTimes(1);
+    });
+    expect(api.updateSpool).not.toHaveBeenCalled();
+  });
+
+  it('resets weight_used to 0 in the create payload when copying a spool with non-zero usage', async () => {
+    // existingSpool has weight_used: 300 — must become 0 on copy
+    render(
+      <SpoolFormModal
+        isOpen={true}
+        onClose={vi.fn()}
+        spool={existingSpool}
+        mode="copy"
+        currencySymbol="$"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Copy Spool' })).toBeInTheDocument();
+    });
+
+    const saveBtn = screen.getAllByRole('button', { name: /copy spool/i })
+      .find(btn => btn.tagName === 'BUTTON' && btn.querySelector('svg'));
+    expect(saveBtn).toBeTruthy();
+    fireEvent.click(saveBtn!);
+
+    await waitFor(() => {
+      expect(api.createSpool).toHaveBeenCalledTimes(1);
+    });
+
+    const [payload] = vi.mocked(api.createSpool).mock.calls[0];
+    expect((payload as Record<string, unknown>).weight_used).toBe(0);
   });
 });

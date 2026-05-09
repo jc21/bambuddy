@@ -3458,6 +3458,7 @@ export default {
       },
     },
     addSpool: 'Spule hinzufügen',
+    copySpool: 'Spule kopieren',
     editSpool: 'Spule bearbeiten',
     material: 'Material',
     selectMaterial: 'Material auswählen...',
