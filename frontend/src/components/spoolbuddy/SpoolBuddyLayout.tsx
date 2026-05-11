@@ -10,6 +10,7 @@ import { useSpoolBuddyState } from '../../hooks/useSpoolBuddyState';
 import { useColorCatalogVersion } from '../../hooks/useColorCatalogVersion';
 import { api, spoolbuddyApi, type Printer, type PrinterStatus } from '../../api/client';
 import { VirtualKeyboard } from '../VirtualKeyboard';
+import { useToast } from '../../contexts/ToastContext';
 
 export function SpoolBuddyLayout() {
   // Cascade a re-render into all SpoolBuddy pages when the color catalog
@@ -23,6 +24,15 @@ export function SpoolBuddyLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const sbState = useSpoolBuddyState();
+
+  // Hide the global toast viewport (background-dispatch progress, etc.) on the
+  // kiosk display. Restore on unmount so navigating back to the main app sees
+  // its toasts again.
+  const { setViewportSuppressed } = useToast();
+  useEffect(() => {
+    setViewportSuppressed(true);
+    return () => setViewportSuppressed(false);
+  }, [setViewportSuppressed]);
 
   // Sync language from backend settings (kiosk has its own browser with empty localStorage)
   const { data: appSettings } = useQuery({
@@ -98,7 +108,7 @@ export function SpoolBuddyLayout() {
   // Blanking itself is handled by swayidle/wlopm at the OS level on the kiosk device —
   // when the HDMI output powers off and the user taps the screen, labwc delivers the
   // input event to swayidle's `resume` command which re-powers HDMI. See issue #937.
-  const tagDetected = Boolean(sbState.matchedSpool || sbState.unknownTagUid);
+  const tagDetected = Boolean(sbState.matchedSpool || sbState.unknownTagUid || sbState.unknownTrayUuid);
   const prevTagDetected = useRef(false);
   useEffect(() => {
     if (tagDetected && !prevTagDetected.current) {

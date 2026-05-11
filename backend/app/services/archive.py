@@ -41,6 +41,83 @@ def _copy_and_fsync(src: Path, dst: Path, chunk_size: int = 1024 * 1024) -> None
     shutil.copystat(src, dst)
 
 
+def resolve_display_stem(filename: str) -> str:
+    """Return a clean human-readable stem from a 3MF/gcode filename.
+
+    Bambu Studio's "Send to printer" dialog typically writes files like
+    ``Plate_1.gcode.3mf`` (a sliced gcode payload wrapped in a 3MF container).
+    The naive ``Path(filename).stem`` only drops the last suffix, leaving
+    ``Plate_1.gcode`` — which then surfaces in the archive UI as a confusing
+    ``Plate_1.gcode`` rather than ``Plate_1`` (#1152 follow-up).
+
+    Strip the recognised print-format suffixes in order:
+
+    - ``.gcode.3mf`` → bare stem (Bambu Studio FTP send)
+    - ``.3mf``       → bare stem
+    - ``.gcode``     → bare stem (rare standalone gcode upload)
+
+    Anything else passes through unchanged.
+    """
+    name = Path(filename).name  # drop any path components
+    lower = name.lower()
+    for suffix in (".gcode.3mf", ".3mf", ".gcode"):
+        if lower.endswith(suffix):
+            return name[: -len(suffix)]
+    return Path(name).stem
+
+
+def peek_plate_index_in_3mf(file_path: Path) -> int | None:
+    """Return the plate index recorded inside a Bambu 3MF, or None.
+
+    Reads only ``Metadata/slice_info.config`` to keep this cheap — used by
+    the print-start callback to verify that the 3MF we just downloaded over
+    FTP actually matches the plate the printer is running (#1204). The full
+    ThreeMFParser does much more work and runs later inside ArchiveService.
+    """
+    try:
+        with zipfile.ZipFile(file_path, "r") as zf:
+            if "Metadata/slice_info.config" not in zf.namelist():
+                return None
+            content = zf.read("Metadata/slice_info.config").decode()
+            root = ET.fromstring(content)
+            plate = root.find(".//plate")
+            if plate is None:
+                return None
+            for meta in plate.findall("metadata"):
+                if meta.get("key") == "index":
+                    value = meta.get("value")
+                    if value:
+                        try:
+                            return int(value)
+                        except ValueError:
+                            return None
+    except Exception:
+        return None
+    return None
+
+
+_PLATE_SUFFIX_RE = re.compile(r"^(.*?)(\s*-\s*Plate\s+|_plate_)(\d+)$", re.IGNORECASE)
+
+
+def swap_plate_suffix(name: str | None, target_plate: int) -> str | None:
+    """Return ``name`` with its trailing plate number replaced, or None.
+
+    Bambu Studio names multi-plate uploads ``"<Project> - Plate <N>"`` (and
+    a lowercase ``"_plate_<N>"`` variant exists too — see
+    test_print_start_expected_promotion). When MQTT subtask_name lags
+    across consecutive plates of the same model (#1204) the suffix points
+    at the previous plate; swapping it gives us the correct upload to
+    re-fetch from FTP. Returns None if no recognised suffix is present.
+    """
+    if not name:
+        return None
+    m = _PLATE_SUFFIX_RE.match(name)
+    if not m:
+        return None
+    base, separator, _ = m.groups()
+    return f"{base}{separator}{target_plate}"
+
+
 class ThreeMFParser:
     """Parser for Bambu Lab 3MF files."""
 
@@ -133,6 +210,8 @@ class ThreeMFParser:
                             self.metadata["print_time_seconds"] = int(value)
                         elif key == "weight" and value:
                             self.metadata["filament_used_grams"] = float(value)
+                        elif key == "curr_bed_type" and value:
+                            self.metadata["bed_type"] = value
 
                     # Extract printable objects for skip object functionality
                     # Objects are stored as <object identify_id="123" name="Part1" skipped="false" />
@@ -334,6 +413,13 @@ class ThreeMFParser:
                 from backend.app.utils.printer_models import normalize_printer_model
 
                 self.metadata["sliced_for_model"] = normalize_printer_model(data["printer_model"])
+
+            # Build plate type — only set from project_settings if slice_info didn't already
+            # provide it (slice_info is more authoritative as it reflects the exported plate).
+            if "bed_type" not in self.metadata and "curr_bed_type" in data:
+                val = data["curr_bed_type"]
+                if isinstance(val, str) and val.strip():
+                    self.metadata["bed_type"] = val.strip()
         except Exception:
             pass  # Print settings are optional; missing values are left unset
 
@@ -886,6 +972,7 @@ class ArchiveService:
         original_filename: str | None = None,
         project_id: int | None = None,
         subtask_id: str | None = None,
+        prefer_filename_for_name: bool = False,
     ) -> PrintArchive | None:
         """Archive a 3MF file with metadata.
 
@@ -901,6 +988,11 @@ class ArchiveService:
             subtask_id: MQTT-provided task identifier (optional). Used to match an
                 existing archive across a backend restart mid-print so the
                 original row can be resumed instead of cancelled (#972).
+            prefer_filename_for_name: When True, use the uploaded filename stem as the
+                archive's display name even if the 3MF embeds a `print_name` in its
+                metadata. Used by virtual-printer flows so users who rename a job in
+                BambuStudio's "send to printer" dialog see that name instead of the
+                creator-baked title (#1152).
         """
         # Verify printer exists if specified
         if printer_id is not None:
@@ -911,7 +1003,7 @@ class ArchiveService:
 
         # Create archive directory structure
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        display_stem = Path(original_filename).stem if original_filename else source_file.stem
+        display_stem = resolve_display_stem(original_filename if original_filename else source_file.name)
         archive_name = f"{timestamp}_{display_stem}"
         # Use "unassigned" folder for archives without a printer
         printer_folder = str(printer_id) if printer_id is not None else "unassigned"
@@ -1028,7 +1120,7 @@ class ArchiveService:
             file_size=dest_file.stat().st_size,
             content_hash=content_hash,
             thumbnail_path=thumbnail_path,
-            print_name=metadata.get("print_name") or display_stem,
+            print_name=display_stem if prefer_filename_for_name else (metadata.get("print_name") or display_stem),
             print_time_seconds=metadata.get("print_time_seconds"),
             filament_used_grams=metadata.get("filament_used_grams"),
             filament_type=metadata.get("filament_type"),
@@ -1037,6 +1129,7 @@ class ArchiveService:
             total_layers=metadata.get("total_layers"),
             nozzle_diameter=metadata.get("nozzle_diameter"),
             bed_temperature=metadata.get("bed_temperature"),
+            bed_type=metadata.get("bed_type"),
             nozzle_temperature=metadata.get("nozzle_temperature"),
             sliced_for_model=metadata.get("sliced_for_model"),
             makerworld_url=metadata.get("makerworld_url"),

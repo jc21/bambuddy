@@ -4,7 +4,6 @@ import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Annotated
 
 import jwt
@@ -24,6 +23,42 @@ from backend.app.models.settings import Settings
 from backend.app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+# SETTINGS_READ is intentionally not denied — the SpoolBuddy kiosk reads settings
+# via API key (e.g. to sync the UI language).
+_APIKEY_DENIED_PERMISSIONS: frozenset[Permission] = frozenset(
+    {
+        Permission.SETTINGS_UPDATE,
+        Permission.SETTINGS_BACKUP,
+        Permission.SETTINGS_RESTORE,
+        Permission.USERS_READ,
+        Permission.USERS_CREATE,
+        Permission.USERS_UPDATE,
+        Permission.USERS_DELETE,
+        Permission.GROUPS_READ,
+        Permission.GROUPS_CREATE,
+        Permission.GROUPS_UPDATE,
+        Permission.GROUPS_DELETE,
+        Permission.API_KEYS_CREATE,
+        Permission.API_KEYS_UPDATE,
+        Permission.API_KEYS_DELETE,
+        Permission.API_KEYS_READ,
+        Permission.GITHUB_BACKUP,
+        Permission.GITHUB_RESTORE,
+        Permission.FIRMWARE_UPDATE,
+    }
+)
+
+
+def _check_apikey_permissions(perm_strings: list[str]) -> None:
+    """Raise 403 if any required permission is admin-only (not accessible via API key)."""
+    denied = _APIKEY_DENIED_PERMISSIONS.intersection(perm_strings)
+    if denied:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API keys cannot be used for administrative operations",
+        )
+
 
 # Password hashing
 # Use pbkdf2_sha256 instead of bcrypt to avoid 72-byte limit and passlib initialization issues
@@ -49,13 +84,9 @@ def _get_jwt_secret() -> str:
         return env_secret
 
     # 2. Check for secret file in data directory
-    # Use DATA_DIR env var (same as rest of app), fallback to data/ subdirectory
-    data_dir_env = os.environ.get("DATA_DIR")
-    if data_dir_env:
-        data_dir = Path(data_dir_env)
-    else:
-        # Fallback to data/ subdirectory under project root (not project root itself!)
-        data_dir = Path(__file__).parent.parent.parent.parent / "data"
+    from backend.app.core.paths import resolve_data_dir
+
+    data_dir = resolve_data_dir()
     secret_file = data_dir / ".jwt_secret"
 
     if secret_file.exists():
@@ -195,7 +226,12 @@ async def create_camera_stream_token() -> str:
 
 
 async def verify_camera_stream_token(token: str) -> bool:
-    """Verify a camera stream token is valid (reusable — does not consume it)."""
+    """Verify a camera stream token is valid (reusable — does not consume it).
+
+    Tries the ephemeral 60-minute token first (the common, browser-bound case)
+    and falls through to long-lived tokens (#1108) for HA / kiosk integrations
+    that paste a token once and expect it to keep working for days.
+    """
     now = datetime.now(timezone.utc)
     async with async_session() as db:
         result = await db.execute(
@@ -205,7 +241,15 @@ async def verify_camera_stream_token(token: str) -> bool:
                 AuthEphemeralToken.expires_at > now,
             )
         )
-        return result.scalar_one_or_none() is not None
+        if result.scalar_one_or_none() is not None:
+            return True
+
+        # Long-lived path. Imported lazily so the auth module stays importable
+        # at startup before the long_lived_tokens model is registered.
+        from backend.app.services.long_lived_tokens import verify_token as verify_long_lived
+
+        record = await verify_long_lived(db, token, scope="camera_stream")
+        return record is not None
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -357,6 +401,28 @@ async def is_auth_enabled(db: AsyncSession) -> bool:
         return False
 
 
+async def _user_from_api_key(db: AsyncSession, api_key: APIKey) -> User | None:
+    """Resolve the owner of a validated API key, or None for legacy ownerless keys.
+
+    Cloud routes (and any route that needs caller identity) read the returned
+    User to look up per-user state like ``cloud_token``. Legacy keys created
+    before #1182 have ``user_id IS NULL`` and stay anonymous — they keep working
+    against non-cloud routes for backward compatibility, but cloud routes will
+    surface a "recreate this key" error rather than 200 with empty results.
+    """
+    if api_key.user_id is None:
+        return None
+    result = await db.execute(select(User).where(User.id == api_key.user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        # CASCADE on user delete should prevent a dangling user_id, but if
+        # someone manually deactivates the owner the key shouldn't suddenly
+        # gain an "anonymous" identity — drop the request to None so cloud
+        # access fails closed.
+        return None
+    return user
+
+
 async def _validate_api_key(db: AsyncSession, api_key_value: str) -> APIKey | None:
     """Validate an API key and return the APIKey object if valid, None otherwise.
 
@@ -487,7 +553,13 @@ async def require_auth_if_enabled(
     """Require authentication if auth is enabled, otherwise return None.
 
     Accepts both JWT tokens (via Authorization: Bearer header) and API keys
-    (via X-API-Key header or Authorization: Bearer bb_xxx).
+    (via X-API-Key header or Authorization: Bearer bb_xxx). API keys return
+    None for backward compatibility — routes that need the API-key owner (i.e.
+    cloud routes for #1182) resolve it via their own router-level dependency
+    that stashes ``request.state.api_key_owner``. Returning the owner here
+    instead would silently grant API-keyed callers access to every route that
+    fences via ``if current_user is None``, which is a wider surface than
+    #1182 was designed to expose.
     """
     async with async_session() as db:
         auth_enabled = await is_auth_enabled(db)
@@ -631,8 +703,7 @@ async def get_api_key(
             detail="API key required. Provide 'X-API-Key' header or 'Authorization: Bearer <key>'",
         )
 
-    # M-NEW-2: Pre-filter by key_prefix (first 8 chars) to avoid O(n) pbkdf2 over all
-    # enabled keys — same fix as in _validate_api_key (L-1 from previous review).
+    # Pre-filter by key_prefix to avoid O(n) pbkdf2 hashes across all enabled keys.
     key_lookup = api_key_value[:8] if len(api_key_value) >= 8 else api_key_value
     result = await db.execute(
         select(APIKey).where(
@@ -667,6 +738,16 @@ async def get_api_key(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid API key",
     )
+
+
+async def caller_is_api_key(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> bool:
+    """Return True when the request is authenticated via API key (X-API-Key or Bearer bb_xxx)."""
+    if x_api_key:
+        return True
+    return credentials is not None and credentials.credentials.startswith("bb_")
 
 
 def check_permission(api_key: APIKey, permission: str) -> None:
@@ -756,6 +837,7 @@ def require_permission(*permissions: str | Permission):
             if x_api_key:
                 api_key = await _validate_api_key(db, x_api_key)
                 if api_key:
+                    _check_apikey_permissions(perm_strings)
                     return None  # API key valid, allow access
 
             credentials_exception = HTTPException(
@@ -772,6 +854,7 @@ def require_permission(*permissions: str | Permission):
             if token.startswith("bb_"):
                 api_key = await _validate_api_key(db, token)
                 if api_key:
+                    _check_apikey_permissions(perm_strings)
                     return None  # API key valid, allow access
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -833,10 +916,18 @@ def require_permission_if_auth_enabled(*permissions: str | Permission):
             if not auth_enabled:
                 return None  # Auth disabled, allow access
 
-            # Check for API key first (X-API-Key header)
+            # Check for API key first (X-API-Key header). API-keyed requests
+            # bypass the JWT permission check entirely — their scopes live on
+            # the APIKey row (can_queue / can_control_printer / can_read_status
+            # / can_access_cloud / printer_ids), and the dep returns None so
+            # routes don't gain a synthetic User identity that would grant
+            # access to fenced surfaces like long-lived-token management.
+            # Cloud routes (#1182) resolve the API-key owner separately via
+            # their own router-level dependency; see ``cloud.py``.
             if x_api_key:
                 api_key = await _validate_api_key(db, x_api_key)
                 if api_key:
+                    _check_apikey_permissions(perm_strings)
                     return None  # API key valid, allow access
 
             # Check for Bearer token (could be JWT or API key)
@@ -846,6 +937,7 @@ def require_permission_if_auth_enabled(*permissions: str | Permission):
                 if token.startswith("bb_"):
                     api_key = await _validate_api_key(db, token)
                     if api_key:
+                        _check_apikey_permissions(perm_strings)
                         return None  # API key valid, allow access
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -917,6 +1009,95 @@ def RequirePermission(*permissions: str | Permission):
 def RequirePermissionIfAuthEnabled(*permissions: str | Permission):
     """Convenience dependency that requires permissions if auth is enabled."""
     return Depends(require_permission_if_auth_enabled(*permissions))
+
+
+def require_any_permission_if_auth_enabled(*permissions: str | Permission):
+    """Dependency factory that requires AT LEAST ONE of the given permissions when auth is enabled."""
+    perm_strings = [p.value if isinstance(p, Permission) else p for p in permissions]
+
+    async def checker(
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)] = None,
+        x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+    ) -> User | None:
+        async with async_session() as db:
+            auth_enabled = await is_auth_enabled(db)
+            if not auth_enabled:
+                return None
+
+            if x_api_key:
+                api_key = await _validate_api_key(db, x_api_key)
+                if api_key:
+                    return None
+
+            if credentials is not None:
+                token = credentials.credentials
+                if token.startswith("bb_"):
+                    api_key = await _validate_api_key(db, token)
+                    if api_key:
+                        return None
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid API key",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                try:
+                    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                    username: str = payload.get("sub")
+                    if username is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Could not validate credentials",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+                    jti: str | None = payload.get("jti")
+                    if not jti or await is_jti_revoked(jti):
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Could not validate credentials",
+                            headers={"WWW-Authenticate": "Bearer"},
+                        )
+                    iat: int | float | None = payload.get("iat")
+                except JWTError:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Could not validate credentials",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                user = await get_user_by_username(db, username)
+                if user is None or not user.is_active:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Could not validate credentials",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                if not _is_token_fresh(iat, user):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Could not validate credentials",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                if not user.has_any_permission(*perm_strings):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Missing required permissions: {', '.join(perm_strings)}",
+                    )
+                return user
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    return checker
+
+
+def RequireAnyPermissionIfAuthEnabled(*permissions: str | Permission):
+    """Convenience dependency that requires AT LEAST ONE of the given permissions when auth is enabled."""
+    return Depends(require_any_permission_if_auth_enabled(*permissions))
 
 
 def require_camera_stream_token_if_auth_enabled():

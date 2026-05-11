@@ -986,6 +986,51 @@ class TestPrinterStateToDict:
         finally:
             printer_manager.set_awaiting_plate_clear(12345, False)
 
+    def test_name_and_model_surfaced_when_registered(self, mock_state):
+        """Registered PrinterInfo name + model arg should land in the WS payload.
+
+        Regression for #963 follow-up: without this, the gcode viewer's printer
+        selector had to wait on a /printers fetch before it could render real
+        names, and the initial WS snapshot showed "Printer 1" fallbacks.
+        """
+        from backend.app.services.printer_manager import PrinterInfo, printer_manager
+
+        # Register a stub PrinterInfo; the real manager writes this on connect.
+        printer_manager._printer_info[98765] = PrinterInfo(name="My X1C", serial_number="01S00-0")
+        try:
+            result = printer_state_to_dict(mock_state, printer_id=98765, model="X1C")
+            assert result["name"] == "My X1C"
+            assert result["model"] == "X1C"
+        finally:
+            printer_manager._printer_info.pop(98765, None)
+
+    def test_name_and_model_absent_when_no_printer_id(self, mock_state):
+        """Without a printer_id (unusual callsites), name/model keys stay absent.
+
+        The consumers (gcode viewer, frontend card) tolerate missing keys; what
+        they can't tolerate is an unrelated printer's name accidentally leaking
+        into a status meant for a different one.
+        """
+        result = printer_state_to_dict(mock_state)
+        assert "name" not in result
+        assert "model" not in result
+
+    def test_model_absent_when_arg_is_none(self, mock_state):
+        """`model` arg=None must not plant a `model` key at all.
+
+        If the arg is None, callers didn't know the model yet; emitting a
+        `model: null` field would overwrite a good value cached client-side.
+        """
+        from backend.app.services.printer_manager import PrinterInfo, printer_manager
+
+        printer_manager._printer_info[55555] = PrinterInfo(name="N", serial_number="S")
+        try:
+            result = printer_state_to_dict(mock_state, printer_id=55555, model=None)
+            assert "model" not in result
+            assert result["name"] == "N"
+        finally:
+            printer_manager._printer_info.pop(55555, None)
+
 
 class TestStatusKeyDryingDedup:
     """Regression tests for WebSocket dedup including drying fields.
@@ -1373,3 +1418,85 @@ class TestParsePlateId:
         # wins. This matches real Bambu paths where the segment is preceded by
         # arbitrary directory noise, and matches the equivalent frontend regex.
         assert parse_plate_id("/uploads/project/plate_5.gcode.md5") == 5
+
+
+class TestResolvePlateId:
+    """Tests for resolve_plate_id() — plate resolution with dispatch precedence.
+
+    Regression coverage for #1166: P1S firmware 01.10.00.00 only puts the .3mf
+    filename in print.gcode_file, so parse_plate_id() returns None and the
+    printer card falls back to plate 1. When Bambuddy dispatches the print
+    itself we know the right plate; resolve_plate_id() prefers that record over
+    the gcode_file regex when subtask_name matches.
+    """
+
+    def _make_state(self, **kwargs):
+        from backend.app.services.bambu_mqtt import PrinterState
+
+        state = PrinterState()
+        for k, v in kwargs.items():
+            setattr(state, k, v)
+        return state
+
+    def test_dispatched_plate_wins_when_subtask_matches(self):
+        # User dispatches plate 4 via Bambuddy. Printer reflects subtask_name
+        # but firmware drops the plate path from gcode_file. Without the dispatch
+        # record we'd default to plate 1.
+        from backend.app.services.printer_manager import resolve_plate_id
+
+        state = self._make_state(
+            gcode_file="MyModel.3mf",  # No plate path — firmware bug
+            subtask_name="MyModel",
+            dispatched_plate_id=4,
+            dispatched_subtask="MyModel",
+        )
+        assert resolve_plate_id(state) == 4
+
+    def test_dispatched_ignored_when_subtask_differs(self):
+        # Bambuddy's dispatch record is for a previous print; the printer is
+        # now running a different subtask (Studio-direct dispatch). The stale
+        # record must not be used — fall back to gcode_file regex.
+        from backend.app.services.printer_manager import resolve_plate_id
+
+        state = self._make_state(
+            gcode_file="/Metadata/plate_2.gcode",
+            subtask_name="DifferentPrint",
+            dispatched_plate_id=4,
+            dispatched_subtask="MyModel",
+        )
+        assert resolve_plate_id(state) == 2
+
+    def test_falls_back_to_gcode_regex_without_dispatch(self):
+        # Studio-direct dispatch — no Bambuddy dispatch record. Existing logic
+        # (parse_plate_id on gcode_file) must still work.
+        from backend.app.services.printer_manager import resolve_plate_id
+
+        state = self._make_state(
+            gcode_file="/Metadata/plate_3.gcode",
+            subtask_name="MyModel",
+        )
+        assert resolve_plate_id(state) == 3
+
+    def test_returns_none_when_nothing_resolvable(self):
+        # No dispatch record AND firmware swallowed the plate path. The route
+        # uses this signal to invoke the 3MF-scan fallback.
+        from backend.app.services.printer_manager import resolve_plate_id
+
+        state = self._make_state(
+            gcode_file="MyModel.3mf",
+            subtask_name="MyModel",
+        )
+        assert resolve_plate_id(state) is None
+
+    def test_dispatched_subtask_required_to_avoid_false_match(self):
+        # dispatched_plate_id without dispatched_subtask is incomplete — we
+        # can't validate it points at the current print, so we ignore it.
+        from backend.app.services.printer_manager import resolve_plate_id
+
+        state = self._make_state(
+            gcode_file="MyModel.3mf",
+            subtask_name="MyModel",
+            dispatched_plate_id=4,
+            dispatched_subtask=None,
+        )
+        assert resolve_plate_id(state) is None

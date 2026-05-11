@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Droplets, Link2, Copy, Check, Settings2, ExternalLink, Package, Unlink } from 'lucide-react';
+import { Droplets, Copy, Check, Settings2, Package, Unlink } from 'lucide-react';
 import { isLightColor } from '../utils/colors';
 
 interface FilamentData {
@@ -28,6 +29,7 @@ interface InventoryConfig {
   onAssignSpool?: () => void;
   onUnassignSpool?: () => void;
   assignedSpool?: { id: number; material: string; brand: string | null; color_name: string | null; remainingWeightGrams?: number | null } | null;
+  isAssigned?: boolean;
 }
 
 interface ConfigureSlotConfig {
@@ -51,6 +53,7 @@ interface FilamentHoverCardProps {
  */
 export function FilamentHoverCard({ data, children, disabled, className = '', spoolman, inventory, configureSlot }: FilamentHoverCardProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState<'top' | 'bottom'>('top');
   const [copied, setCopied] = useState(false);
@@ -236,12 +239,6 @@ export function FilamentHoverCard({ data, children, disabled, className = '', sp
                     {assignedRemainingWeight !== null && data.fillLevel !== null && (
                       <span className="text-[9px] text-bambu-gray font-normal">• {assignedRemainingWeight}g</span>
                     )}
-                    {data.fillSource === 'spoolman' && data.fillLevel !== null && (
-                      <span className="text-[9px] text-bambu-gray font-normal">{t('spoolman.fillSourceLabel')}</span>
-                    )}
-                    {data.fillSource === 'inventory' && data.fillLevel !== null && (
-                      <span className="text-[9px] text-bambu-gray font-normal">{t('inventory.fillSourceLabel')}</span>
-                    )}
                   </span>
                 </div>
                 {/* Fill bar */}
@@ -291,62 +288,43 @@ export function FilamentHoverCard({ data, children, disabled, className = '', sp
                     )}
                   </div>
 
-                  {/* Open in Spoolman button (when already linked) */}
-                  {spoolman.linkedSpoolId && spoolman.spoolmanUrl && (
+                  {/* Open in inventory button (when already linked to a Spoolman spool) */}
+                  {spoolman.linkedSpoolId && (
                     <>
-                      <a
-                        href={`${spoolman.spoolmanUrl.replace(/\/$/, '')}/spool/show/${spoolman.linkedSpoolId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/inventory?spool=${spoolman.linkedSpoolId}`);
+                        }}
                         className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-green/20 hover:bg-bambu-green/30 text-bambu-green"
-                        title={t('spoolman.openInSpoolman')}
+                        title={t('inventory.openInInventory')}
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        {t('spoolman.openInSpoolman')}
-                      </a>
+                        <Package className="w-3.5 h-3.5" />
+                        {t('inventory.openInInventory')}
+                      </button>
 
-                      {spoolman.onUnlinkSpool && (data.vendor !== 'Bambu Lab' || spoolman.syncMode === 'manual') && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowUnlinkConfirm(true);
-                          }}
-                          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-red-500/20 hover:bg-red-500/30 text-red-400"
-                          title={t('spoolman.unlinkSpool')}
-                        >
-                          <Unlink className="w-3.5 h-3.5" />
-                          {t('spoolman.unlinkSpool')}
-                        </button>
-                      )}
                     </>
                   )}
 
-                  {/* Link Spool button (when not linked) */}
-                  {!spoolman.linkedSpoolId && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (spoolman.onLinkSpool) {
-                          spoolman.onLinkSpool?.();
-                        }
-                      }}
-                      disabled={!spoolman.onLinkSpool}
-                      className={`w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
-                        !spoolman.onLinkSpool
-                          ? 'bg-bambu-gray/10 text-bambu-gray cursor-not-allowed'
-                          : 'bg-bambu-green/20 hover:bg-bambu-green/30 text-bambu-green'
-                      }`}
-                    >
-                      <Link2 className="w-3.5 h-3.5" />
-                      {t('spoolman.linkToSpoolman')}
-                    </button>
-                  )}
+                  {/* Link/Unlink action buttons intentionally NOT rendered
+                      here. The inventory section below already provides
+                      Assign/Unassign for slot-binding (the primary user
+                      flow in Spoolman mode). Showing the spoolman tag-link
+                      buttons in addition surfaced two red Unlink-icon
+                      buttons for what users perceive as the same action,
+                      regardless of whether the labels said "Unlink Spool"
+                      vs "Unassign Spool". Tag-linking remains available
+                      via dedicated UI (LinkSpoolModal can be opened from
+                      Spoolman settings / inventory page). */}
                 </div>
               )}
 
-              {/* Inventory section - only for non-Bambu spools */}
-              {inventory && data.vendor !== 'Bambu Lab' && (
+              {/* Inventory section — shown for every vendor including
+                  Bambu Lab (#1133). The earlier "non-Bambu only" gate
+                  prevented users from manually assigning a Bambu spool
+                  in inventory to an AMS slot when they didn't want to
+                  re-scan via SpoolBuddy NFC. */}
+              {inventory && (
                 <div className="pt-2 mt-2 border-t border-bambu-dark-tertiary space-y-2">
                   {inventory.assignedSpool ? (
                     <>
@@ -361,6 +339,19 @@ export function FilamentHoverCard({ data, children, disabled, className = '', sp
                         {inventory.assignedSpool.material}
                         {inventory.assignedSpool.color_name ? ` - ${inventory.assignedSpool.color_name}` : ''}
                       </p>
+                      {(!spoolman?.linkedSpoolId || inventory.assignedSpool!.id !== spoolman.linkedSpoolId) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/inventory?spool=${inventory.assignedSpool!.id}`);
+                          }}
+                          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-green/20 hover:bg-bambu-green/30 text-bambu-green"
+                          title={t('inventory.openInInventory')}
+                        >
+                          <Package className="w-3.5 h-3.5" />
+                          {t('inventory.openInInventory')}
+                        </button>
+                      )}
                       {inventory.onUnassignSpool && (
                         <button
                           onClick={(e) => {
@@ -376,11 +367,14 @@ export function FilamentHoverCard({ data, children, disabled, className = '', sp
                     </>
                   ) : inventory.onAssignSpool ? (
                     <button
-                      onClick={(e) => {
+                      onClick={inventory.isAssigned ? undefined : (e) => {
                         e.stopPropagation();
                         inventory.onAssignSpool?.();
                       }}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-blue/20 hover:bg-bambu-blue/30 text-bambu-blue"
+                      disabled={!!inventory.isAssigned}
+                      className={`w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-blue/20 text-bambu-blue ${
+                        inventory.isAssigned ? 'opacity-50 cursor-not-allowed' : 'hover:bg-bambu-blue/30'
+                      }`}
                     >
                       <Package className="w-3.5 h-3.5" />
                       {t('inventory.assignSpool')}
@@ -453,7 +447,7 @@ export function FilamentHoverCard({ data, children, disabled, className = '', sp
                   }}
                   className="flex-1 px-3 py-2 text-sm font-medium rounded transition-colors bg-red-500/20 hover:bg-red-500/30 text-red-400"
                 >
-                  {t('spoolman.unlinkSpool')}
+                  {t('inventory.unassignSpool')}
                 </button>
               </div>
             </div>
@@ -468,13 +462,10 @@ interface EmptySlotHoverCardProps {
   children: ReactNode;
   className?: string;
   configureSlot?: ConfigureSlotConfig;
-  inventory?: InventoryConfig;
+  onAssignSpool?: () => void;
 }
 
-/**
- * Wrapper for empty slots - shows "Empty" on hover with optional configure button
- */
-export function EmptySlotHoverCard({ children, className = '', configureSlot, inventory }: EmptySlotHoverCardProps) {
+export function EmptySlotHoverCard({ children, className = '', configureSlot, onAssignSpool }: EmptySlotHoverCardProps) {
   const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -516,34 +507,30 @@ export function EmptySlotHoverCard({ children, className = '', configureSlot, in
               {t('ams.emptySlot')}
             </div>
             {/* Configure slot button */}
-            {configureSlot?.enabled && (
-              <div className="px-2 pb-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    configureSlot.onConfigure?.();
-                  }}
-                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-blue/20 hover:bg-bambu-blue/30 text-bambu-blue"
-                  title={t('ams.configureSlot')}
-                >
-                  <Settings2 className="w-3.5 h-3.5" />
-                  {t('ams.configure')}
-                </button>
-              </div>
-            )}
-            {/* Assign spool button - allows assigning inventory spool to empty slot */}
-            {inventory?.onAssignSpool && (
-              <div className="px-2 pb-2">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    inventory.onAssignSpool?.();
-                  }}
-                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-blue/20 hover:bg-bambu-blue/30 text-bambu-blue"
-                >
-                  <Package className="w-3.5 h-3.5" />
-                  {t('inventory.assignSpool')}
-                </button>
+            {(configureSlot?.enabled || onAssignSpool) && (
+              <div className="px-2 pb-2 space-y-1">
+                {configureSlot?.enabled && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      configureSlot.onConfigure?.();
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-blue/20 hover:bg-bambu-blue/30 text-bambu-blue"
+                    title={t('ams.configureSlot')}
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                    {t('ams.configure')}
+                  </button>
+                )}
+                {onAssignSpool && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onAssignSpool(); }}
+                    className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-colors bg-bambu-blue/20 hover:bg-bambu-blue/30 text-bambu-blue"
+                  >
+                    <Package className="w-3.5 h-3.5" />
+                    {t('inventory.assignSpool')}
+                  </button>
+                )}
               </div>
             )}
           </div>
