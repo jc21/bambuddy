@@ -1362,13 +1362,15 @@ async def trigger_daemon_update(
     # Run the SSH update in the background — hold reference to prevent GC cancellation
     _ssh_update_task = asyncio.create_task(perform_ssh_update(device_id, device.ip_address))
     _ssh_update_task.add_done_callback(
-        lambda t: logger.error(
-            "SSH update task for device %s ended unexpectedly (cancelled=%s)",
-            device_id,
-            t.cancelled(),
+        lambda t: (
+            logger.error(
+                "SSH update task for device %s ended unexpectedly (cancelled=%s)",
+                device_id,
+                t.cancelled(),
+            )
+            if (t.cancelled() or t.exception() is not None)
+            else None
         )
-        if (t.cancelled() or t.exception() is not None)
-        else None
     )
 
     return {"status": "ok", "message": "SSH update started"}
